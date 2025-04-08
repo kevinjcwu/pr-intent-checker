@@ -111,9 +111,8 @@ def evaluate_intent(issue_body, code_diff, prompt_template):
         # or directly the text content. Adjust based on prompty's actual API.
 
         logger.info(f"Sending request to Azure OpenAI deployment: {AZURE_OPENAI_DEPLOYMENT}")
-        # Using the standard OpenAI client call for now, assuming prompty helps format the input message
-        # We need the final prompt text from prompty. Let's assume `prompt_template(prompt_inputs)` returns it.
-        final_prompt_text = prompt_template(prompt_inputs) # Hypothetical prompty execution
+        # Render the prompt using the .render() method with keyword arguments
+        final_prompt_text = prompt_template.render(**prompt_inputs)
 
         chat_completion = client.chat.completions.create(
             messages=[
