@@ -1,6 +1,7 @@
 import os
 import logging
-from openai import OpenAI, OpenAIError
+# Import AzureOpenAI specifically
+from openai import AzureOpenAI, OpenAIError
 import prompty
 
 # Configure logging
@@ -68,8 +69,8 @@ def evaluate_intent(issue_body, code_diff, prompt_template):
         return "PASS", "No code changes detected in the PR diff." # Or FAIL? Needs consideration.
 
     try:
-        # Initialize OpenAI client for Azure
-        client = OpenAI(
+        # Initialize AzureOpenAI client
+        client = AzureOpenAI(
             api_key=AZURE_OPENAI_KEY,
             azure_endpoint=AZURE_OPENAI_ENDPOINT,
             api_version=AZURE_OPENAI_API_VERSION,
