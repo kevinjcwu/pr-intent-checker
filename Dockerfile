@@ -25,5 +25,5 @@ COPY src/main.py .
 # Define environment variables (can be overridden)
 # ENV NAME World
 
-# Run main.py when the container launches
-ENTRYPOINT ["python", "main.py"]
+# Run main.py using its absolute path within the container when the container launches
+ENTRYPOINT ["python", "/app/main.py"]
