@@ -153,8 +153,8 @@ def evaluate_intent(issue_body, code_diff, template_string):
         logger.info("Received response from OpenAI.")
         logger.debug(f"LLM Raw Response:\n{response_content}")
 
-        # Parse the response to find "Result: PASS" or "Result: FAIL"
-        result_match = re.search(r"Result:\s*(PASS|FAIL)", response_content, re.IGNORECASE)
+        # Parse the response to find "Result: PASS" or "Result: FAIL", allowing for optional surrounding asterisks
+        result_match = re.search(r"\*?\*?Result:\*?\*?\s*(PASS|FAIL)", response_content, re.IGNORECASE | re.MULTILINE)
 
         if result_match:
             result = result_match.group(1).upper()
