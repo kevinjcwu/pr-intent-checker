@@ -2,4 +2,4 @@ openai
 requests
 python-dotenv
 pyyaml
-prompty
+# prompty # Removed as we are manually parsing the template

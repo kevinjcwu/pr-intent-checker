@@ -2,7 +2,7 @@ import os
 import logging
 # Import AzureOpenAI specifically
 from openai import AzureOpenAI, OpenAIError
-import prompty
+# Removed prompty import
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,13 +23,25 @@ if not all([AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT]):
     logger.error("Azure OpenAI credentials (Endpoint, Key, Deployment) not fully configured in environment variables.")
     # Exit or handle appropriately in main.py
 
-def load_prompt_template(prompt_path=DEFAULT_PROMPT_PATH):
-    """Loads the prompt template from the specified .prompty file."""
+def load_prompt_template_string(prompt_path=DEFAULT_PROMPT_PATH):
+    """Loads the prompt template string from the specified file."""
     try:
-        # Prompty's load function handles reading the file
-        prompt_template = prompty.load(prompt_path)
-        logger.info(f"Successfully loaded prompt template from {prompt_path}")
-        return prompt_template
+        with open(prompt_path, 'r') as f:
+            content = f.read()
+        # Find the end of the YAML front matter (second '---')
+        parts = content.split('---', 2)
+        if len(parts) < 3:
+             logger.warning(f"Could not find YAML front matter separator '---' in {prompt_path}. Using entire file content.")
+             template_string = content
+        else:
+             template_string = parts[2].strip() # Get content after the second '---'
+
+        if not template_string:
+             logger.error(f"Prompt template string is empty after parsing {prompt_path}")
+             return None
+
+        logger.info(f"Successfully loaded prompt template string from {prompt_path}")
+        return template_string
     except FileNotFoundError:
         logger.error(f"Prompt file not found at {prompt_path}")
         return None
@@ -37,9 +49,9 @@ def load_prompt_template(prompt_path=DEFAULT_PROMPT_PATH):
         logger.error(f"Error loading prompt file {prompt_path}: {e}")
         return None
 
-def evaluate_intent(issue_body, code_diff, prompt_template):
+def evaluate_intent(issue_body, code_diff, template_string):
     """
-    Evaluates code diff against issue body using the loaded prompt template and Azure OpenAI API.
+    Evaluates code diff against issue body using the template string and Azure OpenAI API.
 
     Args:
         issue_body (str): The content of the linked GitHub issue.
@@ -55,9 +67,9 @@ def evaluate_intent(issue_body, code_diff, prompt_template):
     if not all([AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT]):
          logger.error("Cannot evaluate intent: Azure OpenAI credentials missing.")
          return None, "Azure OpenAI credentials (Endpoint, Key, Deployment) not configured."
-    if not prompt_template:
-        logger.error("Cannot evaluate intent: Prompt template not loaded.")
-        return None, "Prompt template failed to load."
+    if not template_string:
+        logger.error("Cannot evaluate intent: Prompt template string not loaded.")
+        return None, "Prompt template string failed to load."
     if not issue_body:
         # Handle cases where issue body might be empty or couldn't be fetched
         logger.warning("Issue body is empty. Evaluation might be inaccurate.")
@@ -111,13 +123,18 @@ def evaluate_intent(issue_body, code_diff, prompt_template):
         # or directly the text content. Adjust based on prompty's actual API.
 
         logger.info(f"Sending request to Azure OpenAI deployment: {AZURE_OPENAI_DEPLOYMENT}")
-        # Attempt standard string formatting on the loaded template object
+        # Use f-string formatting (requires {{ }} to be escaped as {{}} if literal braces are needed)
+        # Or use .format() if f-strings are tricky with the template syntax
         try:
-            # Explicitly convert to string before formatting
-            final_prompt_text = str(prompt_template).format(**prompt_inputs)
+            # Using .format() as it handles named placeholders directly
+            final_prompt_text = template_string.format(requirements=issue_body, code_changes=code_diff)
+        except KeyError as fmt_err:
+             logger.error(f"Failed to format prompt template. Missing key: {fmt_err}. Check template variables.")
+             return None, f"Failed to format prompt template. Missing key: {fmt_err}."
         except Exception as fmt_err:
              logger.error(f"Failed to format prompt template: {fmt_err}")
              return None, f"Failed to format prompt template: {fmt_err}"
+
 
         chat_completion = client.chat.completions.create(
             messages=[
