@@ -111,8 +111,13 @@ def evaluate_intent(issue_body, code_diff, prompt_template):
         # or directly the text content. Adjust based on prompty's actual API.
 
         logger.info(f"Sending request to Azure OpenAI deployment: {AZURE_OPENAI_DEPLOYMENT}")
-        # Render the prompt using the .render() method with keyword arguments
-        final_prompt_text = prompt_template.render(**prompt_inputs)
+        # Attempt standard string formatting on the loaded template object
+        try:
+            # Explicitly convert to string before formatting
+            final_prompt_text = str(prompt_template).format(**prompt_inputs)
+        except Exception as fmt_err:
+             logger.error(f"Failed to format prompt template: {fmt_err}")
+             return None, f"Failed to format prompt template: {fmt_err}"
 
         chat_completion = client.chat.completions.create(
             messages=[
