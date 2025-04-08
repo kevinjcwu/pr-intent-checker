@@ -1,0 +1,42 @@
+---
+name: PR Intent Check Prompt
+description: Checks if the code changes in a PR align with the requirements from the linked issue.
+inputs:
+  requirements: string # The body/description/ACs from the linked GitHub Issue
+  code_changes: string # The git diff output for the Pull Request
+# Optional: Add model configuration here if needed, e.g., temperature, max_tokens
+# config:
+#   model: gpt-4o # Can be overridden
+#   temperature: 0.5
+execution:
+  # Assuming prompty uses a standard execution block. Adjust if the spec differs.
+  # The 'type' might vary based on prompty's capabilities (e.g., llm/chat, llm/completion)
+  type: llm/chat # Or llm/completion, depending on prompty's OpenAI integration
+  prompt: |
+    **Context:** You are an AI assistant acting as a Pull Request reviewer. Your task is to determine if the submitted code changes accurately and completely fulfill the requirements outlined in the linked GitHub issue. Focus on the *intent* and *completeness* of the implementation against the requirements.
+
+    **GitHub Issue Requirements:**
+    ```
+    {{requirements}}
+    ```
+
+    **Proposed Code Changes (Git Diff):**
+    ```diff
+    {{code_changes}}
+    ```
+
+    **Analysis Task:**
+    1. Carefully review the **GitHub Issue Requirements**. Understand the goal, the acceptance criteria, and the intended functionality or fix.
+    2. Analyze the **Proposed Code Changes**. Identify what was added, removed, or modified.
+    3. Compare the code changes against the requirements. Does the code logically implement what the issue asked for? Does it cover all specified acceptance criteria? Are there any parts of the requirements that seem unaddressed or incorrectly implemented by the code changes?
+
+    **Output:**
+    Provide a concise explanation summarizing your analysis. Conclude your response *strictly* with one of the following lines, indicating the final result:
+    - `Result: PASS` (if the code changes fully satisfy the issue requirements)
+    - `Result: FAIL` (if the code changes do not satisfy the issue requirements or are incomplete)
+
+    **Explanation:**
+    [Your explanation here]
+
+    **Result:** [PASS or FAIL]
+---
