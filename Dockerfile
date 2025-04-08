@@ -23,7 +23,8 @@ COPY src/main.py .
 # EXPOSE 80
 
 # Define environment variables (can be overridden)
-# ENV NAME World
+# Add /app/src to the PYTHONPATH so main.py can find modules in src/
+ENV PYTHONPATH "${PYTHONPATH}:/app/src"
 
 # Run main.py using its absolute path within the container when the container launches
 ENTRYPOINT ["python", "/app/main.py"]
