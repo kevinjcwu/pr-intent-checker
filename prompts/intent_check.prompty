@@ -12,11 +12,11 @@ inputs:
 # config:
 #   model: gpt-4o # Can be overridden
 #   temperature: 0.5
-# The main prompt template. Prompty should handle filling the {{variables}}.
-prompt: |
-  **Context:** You are an AI assistant acting as a Pull Request reviewer. Your task is to determine if the submitted code changes accurately and completely fulfill the requirements outlined in the linked GitHub issue. Focus on the *intent* and *completeness* of the implementation against the requirements.
+---
+# The main prompt template starts after the front matter.
+**Context:** You are an AI assistant acting as a Pull Request reviewer. Your task is to determine if the submitted code changes accurately and completely fulfill the requirements outlined in the linked GitHub issue. Focus on the *intent* and *completeness* of the implementation against the requirements.
 
-    **GitHub Issue Requirements:**
+**GitHub Issue Requirements:**
     ```
     {{requirements}}
     ```
@@ -40,4 +40,3 @@ prompt: |
     [Your explanation here]
 
     **Result:** [PASS or FAIL]
----
