@@ -2,8 +2,12 @@
 name: PR Intent Check Prompt
 description: Checks if the code changes in a PR align with the requirements from the linked issue.
 inputs:
-  requirements: string # The body/description/ACs from the linked GitHub Issue
-  code_changes: string # The git diff output for the Pull Request
+  requirements:
+    type: string
+    description: The body/description/ACs from the linked GitHub Issue
+  code_changes:
+    type: string
+    description: The git diff output for the Pull Request
 # Optional: Add model configuration here if needed, e.g., temperature, max_tokens
 # config:
 #   model: gpt-4o # Can be overridden
