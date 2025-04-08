@@ -7,15 +7,19 @@ import prompty
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get OpenAI API key from environment variable set by the action input
-OPENAI_API_KEY = os.getenv("INPUT_OPENAI_API_KEY")
-DEFAULT_MODEL = "gpt-4o" # As requested
+# Get Azure OpenAI details from environment variables set by the action inputs
+AZURE_OPENAI_ENDPOINT = os.getenv("INPUT_AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_KEY = os.getenv("INPUT_AZURE_OPENAI_KEY")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("INPUT_AZURE_OPENAI_DEPLOYMENT")
+# A common API version; check Azure portal if a different one is needed for your endpoint
+AZURE_OPENAI_API_VERSION = "2024-02-01"
+
 DEFAULT_PROMPT_PATH = "prompts/intent_check.prompty"
 
-if not OPENAI_API_KEY:
-    logger.error("OpenAI API key (INPUT_OPENAI_API_KEY) not found in environment variables.")
-    # We might not want to exit immediately, main.py can handle this failure
-    # exit(1)
+# Validate necessary Azure credentials
+if not all([AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT]):
+    logger.error("Azure OpenAI credentials (Endpoint, Key, Deployment) not fully configured in environment variables.")
+    # Exit or handle appropriately in main.py
 
 def load_prompt_template(prompt_path=DEFAULT_PROMPT_PATH):
     """Loads the prompt template from the specified .prompty file."""
@@ -46,9 +50,9 @@ def evaluate_intent(issue_body, code_diff, prompt_template, model=DEFAULT_MODEL)
                and explanation is the reasoning from the LLM.
                Returns (None, None) on failure.
     """
-    if not OPENAI_API_KEY:
-        logger.error("Cannot evaluate intent: OpenAI API key is missing.")
-        return None, "OpenAI API Key not configured."
+    if not all([AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT]):
+         logger.error("Cannot evaluate intent: Azure OpenAI credentials missing.")
+         return None, "Azure OpenAI credentials (Endpoint, Key, Deployment) not configured."
     if not prompt_template:
         logger.error("Cannot evaluate intent: Prompt template not loaded.")
         return None, "Prompt template failed to load."
@@ -63,8 +67,12 @@ def evaluate_intent(issue_body, code_diff, prompt_template, model=DEFAULT_MODEL)
         return "PASS", "No code changes detected in the PR diff." # Or FAIL? Needs consideration.
 
     try:
-        # Initialize OpenAI client
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        # Initialize OpenAI client for Azure
+        client = OpenAI(
+            api_key=AZURE_OPENAI_KEY,
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
+            api_version=AZURE_OPENAI_API_VERSION,
+        )
 
         # Prepare inputs for the prompt template
         # The keys ('requirements', 'code_changes') must match the {{variables}} in the .prompty file
@@ -100,7 +108,7 @@ def evaluate_intent(issue_body, code_diff, prompt_template, model=DEFAULT_MODEL)
         # with the given inputs and returns an OpenAI-compatible response object
         # or directly the text content. Adjust based on prompty's actual API.
 
-        logger.info(f"Sending request to OpenAI model: {model}")
+        logger.info(f"Sending request to Azure OpenAI deployment: {AZURE_OPENAI_DEPLOYMENT}")
         # Using the standard OpenAI client call for now, assuming prompty helps format the input message
         # We need the final prompt text from prompty. Let's assume `prompt_template(prompt_inputs)` returns it.
         final_prompt_text = prompt_template(prompt_inputs) # Hypothetical prompty execution
@@ -112,7 +120,8 @@ def evaluate_intent(issue_body, code_diff, prompt_template, model=DEFAULT_MODEL)
                     "content": final_prompt_text,
                 }
             ],
-            model=model,
+            # For Azure, the 'model' parameter is the deployment name
+            model=AZURE_OPENAI_DEPLOYMENT,
             # Add other parameters like temperature, max_tokens if needed
         )
 
@@ -135,8 +144,8 @@ def evaluate_intent(issue_body, code_diff, prompt_template, model=DEFAULT_MODEL)
             return "FAIL", f"Could not parse result from LLM response:\n{response_content}"
 
     except OpenAIError as e:
-        logger.error(f"OpenAI API error: {e}")
-        return None, f"OpenAI API error: {e}"
+        logger.error(f"Azure OpenAI API error: {e}")
+        return None, f"Azure OpenAI API error: {e}"
     except Exception as e:
         logger.error(f"An unexpected error occurred during LLM evaluation: {e}")
         return None, f"An unexpected error occurred: {e}"

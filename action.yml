@@ -6,10 +6,15 @@ inputs:
   github_token:
     description: 'GitHub token for API access'
     required: true
-  openai_api_key:
-    description: 'OpenAI API Key'
+  azure_openai_endpoint:
+    description: 'Azure OpenAI Endpoint URL'
     required: true
-  # Optional: Add inputs for model name, prompt path, etc. if needed later
+  azure_openai_key:
+    description: 'Azure OpenAI API Key'
+    required: true
+  azure_openai_deployment:
+    description: 'Azure OpenAI Deployment Name for the model'
+    required: true
 
 outputs:
   result:
