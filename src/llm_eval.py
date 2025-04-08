@@ -1,5 +1,6 @@
 import os
 import logging
+import re # Import the regular expression module
 # Import AzureOpenAI specifically
 from openai import AzureOpenAI, OpenAIError
 # Removed prompty import
