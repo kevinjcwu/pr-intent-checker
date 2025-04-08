@@ -35,9 +35,9 @@ def load_prompt_template(prompt_path=DEFAULT_PROMPT_PATH):
         logger.error(f"Error loading prompt file {prompt_path}: {e}")
         return None
 
-def evaluate_intent(issue_body, code_diff, prompt_template, model=DEFAULT_MODEL):
+def evaluate_intent(issue_body, code_diff, prompt_template):
     """
-    Evaluates code diff against issue body using the loaded prompt template and OpenAI API.
+    Evaluates code diff against issue body using the loaded prompt template and Azure OpenAI API.
 
     Args:
         issue_body (str): The content of the linked GitHub issue.
