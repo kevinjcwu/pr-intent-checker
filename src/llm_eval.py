@@ -14,7 +14,8 @@ AZURE_OPENAI_DEPLOYMENT = os.getenv("INPUT_AZURE_OPENAI_DEPLOYMENT")
 # A common API version; check Azure portal if a different one is needed for your endpoint
 AZURE_OPENAI_API_VERSION = "2024-02-01"
 
-DEFAULT_PROMPT_PATH = "prompts/intent_check.prompty"
+# Use absolute path within the container
+DEFAULT_PROMPT_PATH = "/app/prompts/intent_check.prompty"
 
 # Validate necessary Azure credentials
 if not all([AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT]):
