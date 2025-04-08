@@ -17,10 +17,10 @@ inputs:
 **Context:** You are an AI assistant acting as a Pull Request reviewer. Your task is to determine if the submitted code changes accurately and completely fulfill the requirements outlined in the linked GitHub issue. Focus on the *intent* and *completeness* of the implementation against the requirements.
 
 **REQUIREMENTS:**
-{{requirements}}
+{requirements}
 
 **CODE CHANGES (DIFF):**
-{{code_changes}}
+{code_changes}
 
 **ANALYSIS TASK:**
     1. Carefully review the **GitHub Issue Requirements**. Understand the goal, the acceptance criteria, and the intended functionality or fix.
