@@ -1,12 +1,12 @@
 import os
 import logging
 import re # Import the regular expression module
-# Import AzureOpenAI specifically
-from openai import AzureOpenAI, OpenAIError
-# Removed prompty import
+import prompty
+import prompty.azure # Import to register the Azure invoker
+from openai import OpenAIError # Still needed for error handling
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Get Azure OpenAI details from environment variables set by the action inputs
@@ -19,40 +19,13 @@ AZURE_OPENAI_API_VERSION = "2024-02-01"
 # Use absolute path within the container
 DEFAULT_PROMPT_PATH = "/app/prompts/intent_check.prompty"
 
-# Validate necessary Azure credentials
-if not all([AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT]):
-    logger.error("Azure OpenAI credentials (Endpoint, Key, Deployment) not fully configured in environment variables.")
-    # Exit or handle appropriately in main.py
+# No need to validate credentials here, prompty should handle it via env vars
 
-def load_prompt_template_string(prompt_path=DEFAULT_PROMPT_PATH):
-    """Loads the prompt template string from the specified file."""
-    try:
-        with open(prompt_path, 'r') as f:
-            content = f.read()
-        # Find the end of the YAML front matter (second '---')
-        parts = content.split('---', 2)
-        if len(parts) < 3:
-             logger.warning(f"Could not find YAML front matter separator '---' in {prompt_path}. Using entire file content.")
-             template_string = content
-        else:
-             template_string = parts[2].strip() # Get content after the second '---'
+# Removed load_prompt_template_string function
 
-        if not template_string:
-             logger.error(f"Prompt template string is empty after parsing {prompt_path}")
-             return None
-
-        logger.info(f"Successfully loaded prompt template string from {prompt_path}")
-        return template_string
-    except FileNotFoundError:
-        logger.error(f"Prompt file not found at {prompt_path}")
-        return None
-    except Exception as e:
-        logger.error(f"Error loading prompt file {prompt_path}: {e}")
-        return None
-
-def evaluate_intent(issue_body, code_diff, template_string):
+def evaluate_intent(issue_body, code_diff):
     """
-    Evaluates code diff against issue body using the template string and Azure OpenAI API.
+    Evaluates code diff against issue body using prompty.execute and Azure OpenAI API.
 
     Args:
         issue_body (str): The content of the linked GitHub issue.
@@ -65,12 +38,7 @@ def evaluate_intent(issue_body, code_diff, template_string):
                and explanation is the reasoning from the LLM.
                Returns (None, None) on failure.
     """
-    if not all([AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT]):
-         logger.error("Cannot evaluate intent: Azure OpenAI credentials missing.")
-         return None, "Azure OpenAI credentials (Endpoint, Key, Deployment) not configured."
-    if not template_string:
-        logger.error("Cannot evaluate intent: Prompt template string not loaded.")
-        return None, "Prompt template string failed to load."
+    # Basic input validation
     if not issue_body:
         # Handle cases where issue body might be empty or couldn't be fetched
         logger.warning("Issue body is empty. Evaluation might be inaccurate.")
@@ -82,75 +50,24 @@ def evaluate_intent(issue_body, code_diff, template_string):
         return "PASS", "No code changes detected in the PR diff." # Or FAIL? Needs consideration.
 
     try:
-        # Initialize AzureOpenAI client
-        client = AzureOpenAI(
-            api_key=AZURE_OPENAI_KEY,
-            azure_endpoint=AZURE_OPENAI_ENDPOINT,
-            api_version=AZURE_OPENAI_API_VERSION,
-        )
-
-        # Prepare inputs for the prompt template
-        # The keys ('requirements', 'code_changes') must match the {{variables}} in the .prompty file
+        logger.info(f"Executing prompt file: {DEFAULT_PROMPT_PATH}")
+        # Prepare inputs dictionary for prompty.execute
         prompt_inputs = {
             "requirements": issue_body,
             "code_changes": code_diff
         }
 
-        # Render the prompt using prompty (this fills in the variables)
-        # Note: Prompty's rendering might evolve. Check its documentation if issues arise.
-        # Assuming prompt_template acts like a callable or has a render method.
-        # If prompty.load returns a string template directly, manual formatting is needed.
-        # Let's assume prompty handles the rendering internally when called/executed.
-        # This part might need adjustment based on how prompty library actually works.
-        # For now, let's assume we pass the dict to the template execution.
+        # Execute the prompt using the library
+        # prompty should read the model config and env vars from the file
+        response_content = prompty.execute(DEFAULT_PROMPT_PATH, inputs=prompt_inputs)
 
-        # --- Placeholder for actual prompty rendering ---
-        # This is conceptual. The actual API might differ.
-        # rendered_prompt_content = prompt_template.render(**prompt_inputs) # Example if it has a render method
-        # Or maybe prompty handles execution directly:
-        # response = prompt_template(**prompt_inputs) # If it's directly callable
+        if not isinstance(response_content, str):
+             # Handle cases where execute might return non-string (e.g., structured object)
+             # This depends on prompty's behavior, adjust as needed.
+             logger.warning(f"prompty.execute returned non-string type: {type(response_content)}. Attempting conversion.")
+             response_content = str(response_content)
 
-        # Let's assume prompty provides a way to get the final message structure
-        # for the OpenAI API call after filling variables.
-        # If not, we construct it manually after filling the template string.
-
-        # Manual construction if prompty.load just returns a string template:
-        # filled_template_string = prompt_template.format(**prompt_inputs) # Basic string formatting
-        # messages = [{"role": "user", "content": filled_template_string}]
-
-        # Using prompty's execution model (preferred if available)
-        # This assumes `prompt_template` object knows how to execute itself
-        # with the given inputs and returns an OpenAI-compatible response object
-        # or directly the text content. Adjust based on prompty's actual API.
-
-        logger.info(f"Sending request to Azure OpenAI deployment: {AZURE_OPENAI_DEPLOYMENT}")
-        # Use f-string formatting (requires {{ }} to be escaped as {{}} if literal braces are needed)
-        # Or use .format() if f-strings are tricky with the template syntax
-        try:
-            # Using .format() as it handles named placeholders directly
-            final_prompt_text = template_string.format(requirements=issue_body, code_changes=code_diff)
-        except KeyError as fmt_err:
-             logger.error(f"Failed to format prompt template. Missing key: {fmt_err}. Check template variables.")
-             return None, f"Failed to format prompt template. Missing key: {fmt_err}."
-        except Exception as fmt_err:
-             logger.error(f"Failed to format prompt template: {fmt_err}")
-             return None, f"Failed to format prompt template: {fmt_err}"
-
-
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": final_prompt_text,
-                }
-            ],
-            # For Azure, the 'model' parameter is the deployment name
-            model=AZURE_OPENAI_DEPLOYMENT,
-            # Add other parameters like temperature, max_tokens if needed
-        )
-
-        response_content = chat_completion.choices[0].message.content
-        logger.info("Received response from OpenAI.")
+        logger.info("Received response via prompty.execute.")
         logger.debug(f"LLM Raw Response:\n{response_content}")
 
         # Parse the response to find "Result: PASS" or "Result: FAIL", allowing for optional surrounding asterisks

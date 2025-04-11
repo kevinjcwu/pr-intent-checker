@@ -8,8 +8,8 @@ from github_api import (
     get_issue_body,
     post_pr_comment
 )
-# Updated import name
-from llm_eval import load_prompt_template_string, evaluate_intent
+# Updated import name again
+from llm_eval import evaluate_intent # Removed load_prompt_template_string
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -73,19 +73,10 @@ def main():
          logger.warning(f"Linked issue #{issue_number} has an empty body. Evaluation might be inaccurate.")
           # Proceed, but the LLM might struggle.
 
-    # --- 4. Load Prompt Template String ---
-    # Updated function call
-    template_string = load_prompt_template_string() # Uses default path "/app/prompts/intent_check.prompty"
-    if not template_string:
-        logger.error("Failed to load prompt template string. Exiting.")
-        set_action_output("result", "FAIL")
-        set_action_output("explanation", "Error: Could not load LLM prompt template.")
-        sys.exit(1)
-
-    # --- 5. Evaluate Intent using LLM ---
-    logger.info("Evaluating PR intent using LLM...")
-    # Pass the template string to the evaluation function
-    result, explanation = evaluate_intent(issue_body, code_diff, template_string)
+    # --- 4. Evaluate Intent using LLM --- (Removed template loading step)
+    logger.info("Evaluating PR intent using LLM via prompty.execute...")
+    # Call evaluate_intent without the template string
+    result, explanation = evaluate_intent(issue_body, code_diff)
 
     if result is None:
         logger.error("LLM evaluation failed.")

@@ -1,5 +1,5 @@
-openai
+# openai # Handled by prompty[azure]
 requests
 python-dotenv
 pyyaml
-# prompty # Removed as we are manually parsing the template
+prompty[azure] # Installs prompty and Azure dependencies
