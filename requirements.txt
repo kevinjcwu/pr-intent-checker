@@ -1,4 +1,3 @@
-# openai # Handled by prompty[azure]
 requests
 python-dotenv
 pyyaml

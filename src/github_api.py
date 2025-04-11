@@ -179,37 +179,3 @@ def post_pr_comment(pr_number, comment_body):
             logger.error(f"Response status: {e.response.status_code}")
             logger.error(f"Response text: {e.response.text}")
         return False
-
-# Example usage (for testing locally, replace env vars)
-# if __name__ == "__main__":
-#     # Mock environment variables for local testing
-#     os.environ['INPUT_GITHUB_TOKEN'] = 'your_dummy_token' # Replace with a real token for actual tests
-#     os.environ['GITHUB_REPOSITORY'] = 'your_username/your_repo'
-#     os.environ['GITHUB_EVENT_PATH'] = 'path/to/mock_event.json' # Create a mock event file
-#
-#     # You'd need to manually set GITHUB_EVENT_PATH to a file containing JSON like:
-#     # { "pull_request": { "number": 123 } } or { "issue": { "number": 123 } }
-#
-#     pr_num = get_pr_details_from_event()
-#     if pr_num:
-#         print(f"PR Number: {pr_num}")
-#         diff = get_pr_diff(pr_num)
-#         if diff:
-#             print("\nPR Diff (first 500 chars):")
-#             print(diff[:500] + "...")
-#
-#         issue_num = find_linked_issue_number(pr_num)
-#         if issue_num:
-#             print(f"\nLinked Issue Number: {issue_num}")
-#             body = get_issue_body(issue_num)
-#             if body is not None: # Check for None explicitly
-#                 print("\nIssue Body:")
-#                 print(body)
-#             else:
-#                 print("\nCould not fetch issue body.")
-#             # Example of posting a comment (use with caution)
-#             # post_pr_comment(pr_num, "This is a test comment from the script.")
-#         else:
-#             print("\nNo linked issue found.")
-#     else:
-#         print("Could not determine PR number from event.")

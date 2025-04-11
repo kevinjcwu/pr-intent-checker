@@ -19,9 +19,6 @@ COPY prompts/ ./prompts/
 # Copy the entrypoint script (assuming it will be src/main.py)
 COPY src/main.py .
 
-# Make port 80 available to the world outside this container (if needed, unlikely for this action)
-# EXPOSE 80
-
 # Define environment variables (can be overridden)
 # Add /app/src to the PYTHONPATH so main.py can find modules in src/
 ENV PYTHONPATH "${PYTHONPATH}:/app/src"

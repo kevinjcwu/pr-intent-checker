@@ -58,8 +58,6 @@ def main():
         # Decide how to handle: fail, pass, or skip? Let's fail for now.
         set_action_output("result", "FAIL")
         set_action_output("explanation", "Error: No linked issue found in PR body (e.g., 'Closes #123').")
-        # Optionally post a comment?
-        # post_pr_comment(pr_number, "PR Intent Check Failed: Could not find a linked issue number in the PR description.")
         sys.exit(1) # Fail the check if no issue is linked
     logger.info(f"Found linked issue #{issue_number}")
 

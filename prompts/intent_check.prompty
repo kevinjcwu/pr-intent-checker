@@ -8,7 +8,6 @@ inputs:
   code_changes:
     type: string
     description: The git diff output for the Pull Request
-# Optional: Add model configuration here if needed, e.g., temperature, max_tokens
 model:
   api: chat # Assuming chat completion API
   configuration:
@@ -20,9 +19,6 @@ model:
     azure_deployment: ${env:INPUT_AZURE_OPENAI_DEPLOYMENT}
     api_key: ${env:INPUT_AZURE_OPENAI_KEY} # Assuming prompty uses this env var name
     api_version: "2024-02-01" # Or make this configurable via env var too
-  # parameters: # Optional LLM parameters
-  #   temperature: 0.7
-  #   max_tokens: 1000
 ---
 # The main prompt template starts after the front matter.
 **Context:** You are an AI assistant acting as a Pull Request reviewer. Your task is to determine if the submitted code changes accurately and completely fulfill the requirements outlined in the linked GitHub issue. Focus on the *intent* and *completeness* of the implementation against the requirements.
