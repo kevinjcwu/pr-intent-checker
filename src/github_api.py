@@ -6,7 +6,8 @@ from typing import Optional, Dict, Any, Tuple
 from github import Github, GithubException, PullRequest, Issue
 from github.GithubException import UnknownObjectException
 
-logging.basicConfig(level=logging.INFO)
+# Force DEBUG level for action logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # --- Configuration ---
@@ -174,11 +175,25 @@ def find_linked_issue_number(pr: PullRequest.PullRequest) -> Optional[int]:
     try:
         # Iterate through the PR's timeline events to find 'cross-referenced' events
         # where the source is an issue. This is the most reliable way.
-        timeline = pr.get_issue_events() # Or pr.get_timeline() in newer PyGithub? Check docs.
-                                         # get_issue_events seems more focused.
-        logger.debug(f"Checking timeline events for PR #{pr.number}...") # Add debug log start
+        timeline = None # Initialize timeline
+        try:
+            logger.debug(f"Attempting to fetch timeline events for PR #{pr.number} using get_issue_events()...")
+            timeline = pr.get_issue_events() # Or pr.get_timeline() in newer PyGithub? Check docs.
+            logger.debug(f"Successfully fetched timeline events object for PR #{pr.number}.")
+        except Exception as e_fetch:
+            logger.error(f"Error occurred *during* fetch of timeline events for PR #{pr.number}: {e_fetch}", exc_info=True)
+            # Exit or return None if fetching fails critically
+            return None
+
+        if timeline is None:
+             logger.error(f"Timeline events object is None after fetch attempt for PR #{pr.number}.")
+             return None
+
+        logger.debug(f"Checking timeline events iterator for PR #{pr.number}...") # Add debug log start
         found_link = False # Flag to track if we found the link
+        event_count = 0 # Count events processed
         for event in timeline:
+            event_count += 1 # Increment count
             logger.debug(f"Timeline event type: {event.event}") # Log the event type
             # Check for events indicating an issue was linked (e.g., 'connected', 'cross-referenced')
             # The exact event type/structure might need verification with GitHub API docs
@@ -204,14 +219,15 @@ def find_linked_issue_number(pr: PullRequest.PullRequest) -> Optional[int]:
 
         # If loop completes without finding a linked issue via timeline events
         if not found_link:
-            logger.warning(f"Could not find any explicitly linked issue via relevant timeline events for PR #{pr.number}.")
+            logger.warning(f"Processed {event_count} timeline events for PR #{pr.number} but found no relevant linked issue event ('cross-referenced' or 'connected').")
+        # If found_link is True, we would have returned earlier
         return None # Return None if no link found after checking all events
 
-    except GithubException as e:
-        logger.error(f"GitHub API error finding linked issue for PR #{pr.number}: {e.status} {e.data}")
+    except GithubException as e_outer:
+        logger.error(f"GitHub API error finding linked issue for PR #{pr.number}: {e_outer.status} {e_outer.data}", exc_info=True)
         return None
-    except Exception as e:
-        logger.error(f"An unexpected error occurred while finding linked issue for PR #{pr.number}: {e}")
+    except Exception as e_outer:
+        logger.error(f"An unexpected error occurred while finding linked issue for PR #{pr.number}: {e_outer}", exc_info=True)
         return None
 
 
