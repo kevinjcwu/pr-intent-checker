@@ -2,14 +2,15 @@ import os
 import sys
 import logging
 from github_api import (
-    get_pr_details_from_event,
-    get_pr_diff,
-    find_linked_issue_number,
-    get_issue_body,
-    post_pr_comment
+    get_pr_number_from_event, # Renamed/updated function
+    get_pull_request,         # New helper
+    get_issue,                # New helper
+    get_pr_diff,              # Takes PR object now
+    find_linked_issue_number, # Takes PR object now
+    get_issue_body,           # Takes Issue object now
+    post_pr_comment           # Takes number, signature unchanged externally
 )
-# Updated import name again
-from llm_eval import evaluate_intent # Removed load_prompt_template_string
+from llm_eval import evaluate_intent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,63 +18,86 @@ logger = logging.getLogger(__name__)
 
 def set_action_output(name, value):
     """Sets an output variable for the GitHub Action."""
-    # Check if value is multiline and format accordingly
-    if isinstance(value, str) and '\n' in value:
+    # Ensure value is a string before checking for newline
+    str_value = str(value) if value is not None else ""
+    if '\n' in str_value:
         # Use heredoc format for multiline outputs
+        # Escape special characters in the value for the shell
+        escaped_value = str_value.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$')
         print(f'echo "{name}<<EOF" >> $GITHUB_OUTPUT')
-        print(f'echo "{value}" >> $GITHUB_OUTPUT')
+        print(f'{escaped_value}" >> $GITHUB_OUTPUT') # No echo needed inside heredoc
         print(f'echo "EOF" >> $GITHUB_OUTPUT')
     else:
         # Standard format for single-line outputs
-        print(f'echo "{name}={value}" >> $GITHUB_OUTPUT')
+        # Escape special characters
+        escaped_value = str_value.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$')
+        print(f'echo "{name}={escaped_value}" >> $GITHUB_OUTPUT')
 
 
 def main():
     logger.info("Starting PR Intent Checker action...")
 
     # --- 1. Get PR Information ---
-    pr_number = get_pr_details_from_event()
+    pr_number = get_pr_number_from_event()
     if not pr_number:
         logger.error("Failed to determine PR number from event payload. Exiting.")
+        set_action_output("result", "FAIL")
+        set_action_output("explanation", "Error: Could not determine PR number from event.")
         sys.exit(1)
     logger.info(f"Processing PR #{pr_number}")
 
+    # Get the PR object using the number
+    pr = get_pull_request(pr_number)
+    if not pr:
+        # Error logged within get_pull_request
+        set_action_output("result", "FAIL")
+        set_action_output("explanation", f"Error: Could not retrieve PR object for #{pr_number}.")
+        sys.exit(1)
+
     # --- 2. Get PR Diff ---
-    code_diff = get_pr_diff(pr_number)
-    if code_diff is None: # Check for None explicitly, as empty diff might be valid
+    # Pass the PR object to the function
+    code_diff = get_pr_diff(pr)
+    if code_diff is None: # Check for None explicitly
         logger.error(f"Failed to fetch diff for PR #{pr_number}. Exiting.")
-        # Optionally set output before exiting
         set_action_output("result", "FAIL")
         set_action_output("explanation", "Error: Could not fetch PR diff.")
         sys.exit(1)
     if not code_diff:
         logger.warning(f"PR #{pr_number} has an empty diff.")
-        # Decide how to handle empty diffs - maybe pass?
-        # For now, let LLM decide based on prompt.
+        # Let LLM decide based on prompt.
 
     # --- 3. Find and Get Linked Issue ---
-    issue_number = find_linked_issue_number(pr_number)
+    # Pass the PR object to the function
+    issue_number = find_linked_issue_number(pr)
     if not issue_number:
-        logger.warning(f"Could not find linked issue for PR #{pr_number}.")
-        # Decide how to handle: fail, pass, or skip? Let's fail for now.
+        logger.error(f"Could not find explicitly linked issue for PR #{pr_number}.")
         set_action_output("result", "FAIL")
-        set_action_output("explanation", "Error: No linked issue found in PR body (e.g., 'Closes #123').")
-        sys.exit(1) # Fail the check if no issue is linked
+        set_action_output("explanation", "Error: No explicitly linked issue found via timeline events for PR.")
+        # Note: We removed the regex fallback, so this is now a hard failure.
+        sys.exit(1)
     logger.info(f"Found linked issue #{issue_number}")
 
-    issue_body = get_issue_body(issue_number)
-    if issue_body is None: # Check for None explicitly
+    # Get the Issue object using the number
+    issue = get_issue(issue_number)
+    if not issue:
+        # Error logged within get_issue
+        set_action_output("result", "FAIL")
+        set_action_output("explanation", f"Error: Could not retrieve Issue object for #{issue_number}.")
+        sys.exit(1)
+
+    # Pass the Issue object to the function
+    issue_body = get_issue_body(issue)
+    if issue_body is None: # Check for None explicitly (though get_issue_body now returns "" for null)
         logger.error(f"Failed to fetch body for issue #{issue_number}. Exiting.")
         set_action_output("result", "FAIL")
         set_action_output("explanation", f"Error: Could not fetch body for linked issue #{issue_number}.")
         sys.exit(1)
     if not issue_body:
          logger.warning(f"Linked issue #{issue_number} has an empty body. Evaluation might be inaccurate.")
-          # Proceed, but the LLM might struggle.
+          # Proceed.
 
-    # --- 4. Evaluate Intent using LLM --- (Removed template loading step)
+    # --- 4. Evaluate Intent using LLM ---
     logger.info("Evaluating PR intent using LLM via prompty.execute...")
-    # Call evaluate_intent without the template string
     result, explanation = evaluate_intent(issue_body, code_diff)
 
     if result is None:
@@ -84,14 +108,18 @@ def main():
 
     logger.info(f"LLM Evaluation Result: {result}")
 
-    # --- 6. Set Outputs and Exit ---
+    # --- 5. Set Outputs and Post Comment ---
     set_action_output("result", result)
     set_action_output("explanation", explanation)
 
-    # Optional: Post the explanation as a PR comment
+    # Post the explanation as a PR comment
     comment_header = f"🤖 **PR Intent Check Result: {result}**\n\n"
-    post_pr_comment(pr_number, comment_header + explanation)
+    # Pass the original pr_number here, as post_pr_comment takes the number
+    comment_posted = post_pr_comment(pr_number, comment_header + (explanation or "No explanation provided."))
+    if not comment_posted:
+        logger.warning(f"Failed to post comment to PR #{pr_number}.") # Don't fail the action for this
 
+    # --- 6. Exit with appropriate status ---
     if result == "PASS":
         logger.info("PR Intent Check Passed.")
         sys.exit(0) # Exit with success code
