@@ -219,9 +219,30 @@ def find_linked_issue_number(pr: PullRequest.PullRequest) -> Optional[int]:
 
         # If loop completes without finding a linked issue via timeline events
         if not found_link:
-            logger.warning(f"Processed {event_count} timeline events for PR #{pr.number} but found no relevant linked issue event ('cross-referenced' or 'connected').")
-        # If found_link is True, we would have returned earlier
-        return None # Return None if no link found after checking all events
+            logger.warning(f"Processed {event_count} timeline events for PR #{pr.number}. Found no explicitly linked issue event. Falling back to regex check on PR body.")
+            # --- Fallback: Regex check on PR body ---
+            pr_body = pr.body
+            if not pr_body:
+                logger.warning(f"PR #{pr.number} body is empty. Cannot find linked issue via body text either.")
+                return None
+
+            import re # Import locally if only used here
+            patterns = [
+                r"(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[\s:]*#(\d+)"
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, pr_body, re.IGNORECASE)
+                if match:
+                    issue_number = int(match.group(1))
+                    logger.info(f"Found potential linked issue #{issue_number} via regex fallback in PR #{pr.number} body.")
+                    return issue_number
+
+            logger.warning(f"Could not find linked issue number via regex fallback in PR #{pr.number} body.")
+            return None # Return None if fallback also fails
+        else:
+             # This case should not be reached if found_link is True, as we return earlier
+             return None
+
 
     except GithubException as e_outer:
         logger.error(f"GitHub API error finding linked issue for PR #{pr.number}: {e_outer.status} {e_outer.data}", exc_info=True)
