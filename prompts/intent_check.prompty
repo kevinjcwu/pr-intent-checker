@@ -31,17 +31,21 @@ model:
 
 **ANALYSIS TASK:**
     1. Carefully review the **GitHub Issue Requirements**. Understand the goal, the acceptance criteria, and the intended functionality or fix.
-    2. Analyze the **Proposed Code Changes**. Identify what was added, removed, or modified.
+    2. Analyze the **Proposed Code Changes (Diff)**. Identify what was added, removed, or modified.
     3. Compare the code changes against the requirements. Does the code logically implement what the issue asked for? Does it cover all specified acceptance criteria? Are there any parts of the requirements that seem unaddressed or incorrectly implemented by the code changes?
+    4. **If and only if** you determine the result is `FAIL` because the code changes do not meet the requirements, identify the specific lines or small blocks of code from the **CODE CHANGES (DIFF)** input that demonstrate the discrepancy or failure to meet requirements. Quote these relevant code snippets accurately in your explanation using Markdown code fences (```diff ... ```).
 
 **OUTPUT FORMAT:**
 Provide a concise explanation summarizing your analysis.
+*   If the result is `PASS`, simply provide the explanation.
+*   If the result is `FAIL`, provide the explanation AND include the relevant quoted code snippets from the diff that illustrate the failure, using Markdown code fences like ```diff ... ```.
+
 **IMPORTANT:** Your response MUST end with *exactly* one of the following lines, with no extra text after it:
 `Result: PASS`
 OR
 `Result: FAIL`
 
 **Explanation:**
-    [Your explanation here]
+    [Your explanation here. If FAIL, include relevant code snippets below using ```diff ... ``` fences.]
 
     **Result:** [PASS or FAIL]

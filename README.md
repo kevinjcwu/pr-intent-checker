@@ -10,7 +10,7 @@ This GitHub Action uses an AI model (via Azure OpenAI Service) to analyze the co
 4.  **AI Analysis:** It sends the issue requirements and the code diff to your configured Azure OpenAI model (e.g., GPT-4o) using a predefined prompt.
 5.  **Evaluation:** The AI model evaluates whether the code changes satisfy the requirements.
 6.  **Report Result:** The action parses the AI's response to determine a `PASS` or `FAIL` result.
-7.  **Status Check & Comment:** It sets the status check on the PR accordingly (failing the check on `FAIL`) and posts the AI's explanation as a comment on the PR.
+7.  **Status Check & Comment:** It sets the status check on the PR accordingly (failing the check on `FAIL`). It then posts the AI's explanation as a comment on the PR. If the result is `FAIL`, the explanation will attempt to include specific code snippets from the diff that illustrate the detected misalignment with the requirements.
 
 ## Usage
 
@@ -96,7 +96,7 @@ This GitHub Action uses an AI model (via Azure OpenAI Service) to analyze the co
 ## Outputs
 
 *   `result`: The result of the evaluation (`PASS` or `FAIL`).
-*   `explanation`: The explanation provided by the AI model.
+*   `explanation`: The explanation provided by the AI model. If the result is `FAIL`, this explanation may include specific code snippets (formatted using Markdown diff syntax) highlighting the areas of concern identified by the AI.
 
 ## Contributing
 
