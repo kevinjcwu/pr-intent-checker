@@ -176,7 +176,10 @@ def find_linked_issue_number(pr: PullRequest.PullRequest) -> Optional[int]:
         # where the source is an issue. This is the most reliable way.
         timeline = pr.get_issue_events() # Or pr.get_timeline() in newer PyGithub? Check docs.
                                          # get_issue_events seems more focused.
+        logger.debug(f"Checking timeline events for PR #{pr.number}...") # Add debug log start
+        found_link = False # Flag to track if we found the link
         for event in timeline:
+            logger.debug(f"Timeline event type: {event.event}") # Log the event type
             # Check for events indicating an issue was linked (e.g., 'connected', 'cross-referenced')
             # The exact event type/structure might need verification with GitHub API docs
             # Let's assume 'cross-referenced' is a key indicator for now.
@@ -187,15 +190,22 @@ def find_linked_issue_number(pr: PullRequest.PullRequest) -> Optional[int]:
                  source_issue = event.source.issue
                  if source_issue.number != pr.number and source_issue.repository.full_name == repo.full_name:
                      linked_issue_number = source_issue.number
-                     logger.info(f"Found linked issue #{linked_issue_number} via timeline event for PR #{pr.number}.")
-                     return linked_issue_number
+                     logger.info(f"Found linked issue #{linked_issue_number} via '{event.event}' event for PR #{pr.number}.")
+                     found_link = True # Set flag
+                     return linked_issue_number # Return immediately
 
             # Alternative: Check for 'connected' event if 'cross-referenced' isn't right
-            # if event.event == 'connected' and event.actor and event.source ... etc.
+            # You might add a similar check here if needed:
+            # elif event.event == 'connected' and ... :
+            #    # logic to extract issue number from connected event
+            #    logger.info(f"Found linked issue via 'connected' event...")
+            #    found_link = True
+            #    return linked_issue_number
 
         # If loop completes without finding a linked issue via timeline events
-        logger.warning(f"Could not find any explicitly linked issue via timeline events for PR #{pr.number}.")
-        return None
+        if not found_link:
+            logger.warning(f"Could not find any explicitly linked issue via relevant timeline events for PR #{pr.number}.")
+        return None # Return None if no link found after checking all events
 
     except GithubException as e:
         logger.error(f"GitHub API error finding linked issue for PR #{pr.number}: {e.status} {e.data}")
