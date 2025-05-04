@@ -1,9 +1,11 @@
 import os
+import os
 import logging
 import re # Import the regular expression module
 import prompty
 import prompty.azure # Import to register the Azure invoker
 from openai import OpenAIError # Still needed for error handling
+import tiktoken # For token counting
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -16,6 +18,10 @@ AZURE_OPENAI_DEPLOYMENT = os.getenv("INPUT_AZURE_OPENAI_DEPLOYMENT")
 # A common API version; check Azure portal if a different one is needed for your endpoint
 AZURE_OPENAI_API_VERSION = "2024-02-01"
 
+logger.debug(f"Azure OpenAI Endpoint: {AZURE_OPENAI_ENDPOINT}")
+logger.debug(f"Azure OpenAI Deployment: {AZURE_OPENAI_DEPLOYMENT}")
+logger.debug(f"Azure OpenAI API Version: {AZURE_OPENAI_API_VERSION}")
+
 # Use absolute path within the container
 DEFAULT_PROMPT_PATH = "/app/prompts/intent_check.prompty"
 
@@ -23,15 +29,43 @@ DEFAULT_PROMPT_PATH = "/app/prompts/intent_check.prompty"
 
 # Removed load_prompt_template_string function
 
-def evaluate_intent(issue_body, code_diff):
+# --- Token Counting Helper ---
+# Cache the tokenizer encoding
+_tokenizer = None
+_tokenizer_model = "gpt-4" # Assume gpt-4 encoding, adjust if needed
+
+def count_tokens(text: str) -> int:
+    """Counts tokens using tiktoken for the default model encoding."""
+    global _tokenizer
+    if not text:
+        return 0
+    if _tokenizer is None:
+        try:
+            # Use encoding for cl100k_base which is common for GPT-4, GPT-3.5-turbo, text-embedding-ada-002
+            # If using a different model family, you might need a different encoding name.
+            _tokenizer = tiktoken.get_encoding("cl100k_base")
+            # Alternatively, load by model name, but this requires network access on first run:
+            # _tokenizer = tiktoken.encoding_for_model(_tokenizer_model)
+            logger.info(f"Initialized tiktoken tokenizer with encoding '{_tokenizer.name}'.")
+        except Exception as e:
+            logger.error(f"Failed to initialize tiktoken tokenizer: {e}. Token counts will be inaccurate.", exc_info=True)
+            return -1 # Indicate error
+    try:
+        return len(_tokenizer.encode(text))
+    except Exception as e:
+        logger.error(f"Error encoding text with tiktoken: {e}", exc_info=True)
+        return -1 # Indicate error
+
+
+def evaluate_intent(issue_body: str, code_diff: str, contextual_code: str):
     """
-    Evaluates code diff against issue body using prompty.execute and Azure OpenAI API.
+    Evaluates code diff against issue body using prompty.execute and Azure OpenAI API,
+    incorporating contextual code snippets.
 
     Args:
         issue_body (str): The content of the linked GitHub issue.
         code_diff (str): The diff content of the pull request.
-        prompt_template (Prompt): The loaded prompty object.
-        model (str): The OpenAI model to use.
+        contextual_code (str): Extracted contextual code snippets (definitions, signatures, imports).
 
     Returns:
         tuple: (result, explanation) where result is 'PASS' or 'FAIL',
@@ -54,8 +88,15 @@ def evaluate_intent(issue_body, code_diff):
         # Prepare inputs dictionary for prompty.execute
         prompt_inputs = {
             "requirements": issue_body,
-            "code_changes": code_diff
+            "code_changes": code_diff,
+            "context_code": contextual_code # Add the new context
         }
+
+        # Log token counts for debugging
+        req_tokens = count_tokens(issue_body)
+        diff_tokens = count_tokens(code_diff)
+        context_tokens = count_tokens(contextual_code)
+        logger.debug(f"Approximate token counts for inputs: {{ requirements: {req_tokens}, code_changes: {diff_tokens}, context_code: {context_tokens} }}")
 
         # Execute the prompt using the library
         # prompty should read the model config and env vars from the file

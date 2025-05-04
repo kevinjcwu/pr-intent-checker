@@ -5,10 +5,11 @@ from github_api import (
     get_pr_number_from_event, # Renamed/updated function
     get_pull_request,         # New helper
     get_issue,                # New helper
-    get_pr_diff,              # Takes PR object now
-    find_linked_issue_number, # Takes PR object now
-    get_issue_body,           # Takes Issue object now
-    post_pr_comment           # Takes number, signature unchanged externally
+    get_pr_diff,              # Takes PR object, returns diff string
+    find_linked_issue_number, # Takes PR object
+    get_issue_body,           # Takes Issue object
+    post_pr_comment,          # Takes number
+    get_contextual_code       # Takes PR object and diff string
 )
 from llm_eval import evaluate_intent
 
@@ -96,9 +97,20 @@ def main():
          logger.warning(f"Linked issue #{issue_number} has an empty body. Evaluation might be inaccurate.")
           # Proceed.
 
-    # --- 4. Evaluate Intent using LLM ---
+    # --- 4. Get Contextual Code ---
+    logger.info("Extracting contextual code snippets...")
+    contextual_code = get_contextual_code(pr, code_diff)
+    if not contextual_code:
+        logger.warning("Could not extract contextual code. Proceeding with diff only.")
+        # Optionally, you could fail here if context is deemed essential
+        # set_action_output("result", "FAIL")
+        # set_action_output("explanation", "Error: Could not extract contextual code for analysis.")
+        # sys.exit(1)
+
+    # --- 5. Evaluate Intent using LLM ---
     logger.info("Evaluating PR intent using LLM via prompty.execute...")
-    result, explanation = evaluate_intent(issue_body, code_diff)
+    # Pass the contextual code to the evaluation function
+    result, explanation = evaluate_intent(issue_body, code_diff, contextual_code)
 
     if result is None:
         logger.error("LLM evaluation failed.")
@@ -108,7 +120,7 @@ def main():
 
     logger.info(f"LLM Evaluation Result: {result}")
 
-    # --- 5. Set Outputs and Post Comment ---
+    # --- 6. Set Outputs and Post Comment ---
     set_action_output("result", result)
     set_action_output("explanation", explanation)
 
@@ -119,7 +131,7 @@ def main():
     if not comment_posted:
         logger.warning(f"Failed to post comment to PR #{pr_number}.") # Don't fail the action for this
 
-    # --- 6. Exit with appropriate status ---
+    # --- 7. Exit with appropriate status ---
     if result == "PASS":
         logger.info("PR Intent Check Passed.")
         sys.exit(0) # Exit with success code

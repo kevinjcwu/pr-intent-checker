@@ -8,6 +8,9 @@ inputs:
   code_changes:
     type: string
     description: The git diff output for the Pull Request
+  context_code:
+    type: string
+    description: Extracted source code context (definitions, signatures, imports) relevant to the changes. Optional.
 model:
   api: chat # Assuming chat completion API
   configuration:
@@ -27,13 +30,23 @@ model:
 {{requirements}}
 
 **CODE CHANGES (DIFF):**
+```diff
 {{code_changes}}
+```
+
+{{#if context_code}}
+**RELEVANT CODE CONTEXT:**
+```python
+{{context_code}}
+```
+{{/if}}
 
 **ANALYSIS TASK:**
     1. Carefully review the **GitHub Issue Requirements**. Understand the goal, the acceptance criteria, and the intended functionality or fix.
     2. Analyze the **Proposed Code Changes (Diff)**. Identify what was added, removed, or modified.
-    3. Compare the code changes against the requirements. Does the code logically implement what the issue asked for? Does it cover all specified acceptance criteria? Are there any parts of the requirements that seem unaddressed or incorrectly implemented by the code changes?
-    4. **If and only if** you determine the result is `FAIL` because the code changes do not meet the requirements, identify the specific lines or small blocks of code from the **CODE CHANGES (DIFF)** input that demonstrate the discrepancy or failure to meet requirements. Quote these relevant code snippets accurately in your explanation using Markdown code fences (```diff ... ```).
+    3. Use the **Relevant Code Context** (if provided) to understand the structure of the changed code (e.g., the full function definition) and how it interacts with other code (e.g., signatures of functions it calls, relevant imports).
+    4. Compare the code changes, considering the provided context, against the requirements. Does the code logically implement what the issue asked for? Does it cover all specified acceptance criteria? Are there any parts of the requirements that seem unaddressed or incorrectly implemented by the code changes, considering how the code fits together?
+    5. **If and only if** you determine the result is `FAIL` because the code changes do not meet the requirements, identify the specific lines or small blocks of code from the **CODE CHANGES (DIFF)** or **RELEVANT CODE CONTEXT** input that demonstrate the discrepancy or failure to meet requirements. Quote these relevant code snippets accurately in your explanation using Markdown code fences (e.g., ```diff ... ``` or ```python ... ```).
 
 **OUTPUT FORMAT:**
 Provide a concise explanation summarizing your analysis.
@@ -46,6 +59,6 @@ OR
 `Result: FAIL`
 
 **Explanation:**
-    [Your explanation here. If FAIL, include relevant code snippets below using ```diff ... ``` fences.]
+    [Your explanation here. If FAIL, include relevant code snippets below using appropriate Markdown code fences.]
 
     **Result:** [PASS or FAIL]

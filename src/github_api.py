@@ -1,10 +1,14 @@
 import os
 import json
 import logging
-from typing import Optional, Dict, Any, Tuple
+import ast  # For parsing Python code
+import inspect # For getting source code from nodes (fallback)
+import re # For parsing diff hunks
+from typing import Optional, Dict, Any, Tuple, List, Set
 
-from github import Github, GithubException, PullRequest, Issue
+from github import Github, GithubException, PullRequest, Issue, ContentFile, GitCommit
 from github.GithubException import UnknownObjectException
+from github.File import File as GithubFile # Rename to avoid conflict
 
 # Force DEBUG level for action logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
@@ -52,6 +56,171 @@ except UnknownObjectException:
 except GithubException as e:
     logger.error(f"Error connecting to GitHub: {e.status} {e.data}")
     exit(1)
+
+# --- AST Parsing Helpers ---
+
+class FunctionInfo:
+    """Stores information about a function definition."""
+    def __init__(self, node: ast.FunctionDef):
+        self.node = node
+        self.name = node.name
+        self.start_line = node.lineno
+        self.end_line = node.end_lineno
+        self.calls: List[str] = [] # Names of functions/methods called
+        self.signature: str = ""
+        self.body_source: str = "" # Full source code
+
+class ClassInfo:
+    """Stores information about a class definition."""
+    def __init__(self, node: ast.ClassDef):
+        self.node = node
+        self.name = node.name
+        self.start_line = node.lineno
+        self.end_line = node.end_lineno
+        self.methods: Dict[str, FunctionInfo] = {} # Method name -> FunctionInfo
+
+class AstParser(ast.NodeVisitor):
+    """
+    Parses Python code using AST to extract imports, classes, functions,
+    their line ranges, and calls made within functions.
+    """
+    def __init__(self, source_code: str):
+        self.source_lines = source_code.splitlines()
+        self.imports: List[str] = []
+        self.functions: Dict[str, FunctionInfo] = {}
+        self.classes: Dict[str, ClassInfo] = {}
+        self._current_class_name: Optional[str] = None
+
+    def _get_node_source(self, node):
+        try:
+            # ast.unparse is preferred (Python 3.9+)
+            return ast.unparse(node)
+        except AttributeError:
+            # Fallback using inspect (less reliable for exact formatting)
+            try:
+                return inspect.getsource(node) # This might not work directly on AST nodes
+            except:
+                 # Manual slicing as a last resort (might be inaccurate)
+                 start = node.lineno - 1
+                 end = node.end_lineno
+                 return "\n".join(self.source_lines[start:end])
+
+    def _get_signature_source(self, node: ast.FunctionDef):
+         # Extract source lines just for the signature part
+         start = node.lineno -1
+         end_sig_line = node.body[0].lineno - 1 if node.body else node.end_lineno
+         # Adjust end line if decorators are present
+         if node.decorator_list:
+             start = node.decorator_list[0].lineno -1
+
+         signature_lines = self.source_lines[start:end_sig_line]
+         # Find the line containing 'def' and trim leading whitespace/decorators
+         def_line_index = -1
+         for i, line in enumerate(signature_lines):
+             if line.strip().startswith("def "):
+                 def_line_index = i
+                 break
+         
+         if def_line_index != -1:
+             # Get the indentation of the 'def' line
+             indent = len(signature_lines[def_line_index]) - len(signature_lines[def_line_index].lstrip())
+             # Include decorators if present
+             start_index = 0
+             # Reconstruct signature, preserving relative indentation
+             sig = "\n".join(line[indent:] for line in signature_lines[start_index:])
+             return sig.strip() # Return the cleaned signature
+         else:
+             # Fallback if 'def' not found as expected
+             return f"def {node.name}(...): # Signature extraction failed"
+
+
+    def visit_Import(self, node):
+        self.imports.append(self._get_node_source(node))
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node):
+        self.imports.append(self._get_node_source(node))
+        self.generic_visit(node)
+
+    def visit_ClassDef(self, node):
+        class_info = ClassInfo(node)
+        self.classes[node.name] = class_info
+        self._current_class_name = node.name
+        self.generic_visit(node) # Visit methods inside the class
+        self._current_class_name = None
+
+    def visit_FunctionDef(self, node):
+        func_info = FunctionInfo(node)
+        func_info.signature = self._get_signature_source(node)
+        func_info.body_source = self._get_node_source(node)
+
+        # Find calls within this function
+        for body_node in ast.walk(node):
+            if isinstance(body_node, ast.Call):
+                call_name = ""
+                if isinstance(body_node.func, ast.Name):
+                    call_name = body_node.func.id
+                elif isinstance(body_node.func, ast.Attribute):
+                    try:
+                        call_name = ast.unparse(body_node.func)
+                    except AttributeError: # Fallback
+                         if isinstance(body_node.func.value, ast.Name):
+                             call_name = f"{body_node.func.value.id}.{body_node.func.attr}"
+                         else:
+                             call_name = f"?.{body_node.func.attr}"
+                if call_name:
+                    func_info.calls.append(call_name)
+
+        if self._current_class_name:
+            # This is a method within a class
+            if self._current_class_name in self.classes:
+                self.classes[self._current_class_name].methods[node.name] = func_info
+        else:
+            # This is a standalone function
+            self.functions[node.name] = func_info
+        # Don't call generic_visit here as we manually walked the body for calls
+
+
+def parse_diff_hunks(diff_text: str) -> Dict[str, Set[int]]:
+    """Parses a diff string and returns a dict mapping filename to changed line numbers."""
+    changed_lines: Dict[str, Set[int]] = {}
+    current_filename = None
+    # Regex to find hunk headers like @@ -1,3 +1,4 @@
+    hunk_header_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+)?)? @@")
+
+    for line in diff_text.splitlines():
+        if line.startswith("+++ b/"):
+            current_filename = line[6:].strip()
+            if current_filename not in changed_lines:
+                changed_lines[current_filename] = set()
+        elif line.startswith("@@") and current_filename:
+            match = hunk_header_re.match(line)
+            if match:
+                start_line = int(match.group(1))
+                count = int(match.group(2) or 1) # If count is omitted, it's 1 line
+                current_line_in_hunk = start_line
+                line_index_in_hunk = 0 # Track position within the hunk lines that follow
+                # Pre-calculate target lines for this hunk
+                target_lines = set(range(start_line, start_line + count)) if count > 0 else set()
+
+        elif line.startswith("+") and not line.startswith("+++") and current_filename:
+             # This is an added line, associate it with the current line number in the *new* file
+             changed_lines[current_filename].add(current_line_in_hunk)
+             current_line_in_hunk += 1
+             line_index_in_hunk += 1
+        elif line.startswith("-") and not line.startswith("---"):
+             # This is a deleted line, it doesn't advance the line number in the new file
+             # But we still need to advance our position within the hunk lines
+             line_index_in_hunk += 1
+             pass
+        elif not line.startswith("@@") and current_filename:
+             # This is an unchanged context line
+             current_line_in_hunk += 1
+             line_index_in_hunk += 1
+
+    # Filter out files where only deletions occurred (no lines added/modified)
+    return {f: lines for f, lines in changed_lines.items() if lines}
+
 
 # --- Helper Functions ---
 
@@ -299,3 +468,155 @@ def post_pr_comment(pr_or_issue_number: int, comment_body: str) -> bool:
     except Exception as e:
         logger.error(f"An unexpected error occurred posting comment to #{pr_or_issue_number}: {e}")
         return False
+
+
+def get_contextual_code(pr: PullRequest.PullRequest, diff_text: str) -> str:
+    """
+    Fetches relevant code context for changes identified in a diff.
+    Implements the refined strategy: full definition of changed blocks + signatures of local calls.
+
+    Args:
+        pr: The PyGithub PullRequest object.
+        diff_text: The diff string for the PR.
+
+    Returns:
+        A string containing formatted contextual code snippets, or empty string if none found.
+    """
+    context_parts = []
+    # Use the diff parser to find changed lines per file (in the new version)
+    changed_py_files = parse_diff_hunks(diff_text)
+    pr_head_sha = pr.head.sha # Get the commit SHA for the PR head
+
+    logger.info(f"Found {len(changed_py_files)} Python files with changes in diff.")
+
+    # Cache parsed file info to avoid redundant parsing if a file is processed multiple times
+    # (e.g., if multiple changed functions call each other within the same file)
+    parsed_file_cache: Dict[str, AstParser] = {}
+
+    def get_parsed_file(filename: str) -> Optional[AstParser]:
+        """Fetches file content and parses it, using a cache."""
+        if filename in parsed_file_cache:
+            return parsed_file_cache[filename]
+        
+        try:
+            logger.debug(f"Fetching content for {filename} at ref {pr_head_sha}")
+            content_item = repo.get_contents(filename, ref=pr_head_sha)
+            if isinstance(content_item, list):
+                 logger.warning(f"Path {filename} is a directory, skipping.")
+                 return None
+            if not isinstance(content_item, ContentFile) or content_item.type != 'file':
+                 logger.warning(f"Path {filename} is not a file (type: {getattr(content_item, 'type', 'unknown')}), skipping.")
+                 return None
+
+            file_content = content_item.decoded_content.decode("utf-8")
+            logger.debug(f"Successfully fetched content for {filename}")
+
+            parser = AstParser(file_content)
+            parser.visit(ast.parse(file_content))
+            logger.debug(f"Parsed {filename}. Found {len(parser.functions)} funcs, {len(parser.classes)} classes.")
+            parsed_file_cache[filename] = parser # Cache the result
+            return parser
+
+        except GithubException as e:
+            if e.status == 403 and 'rate limit exceeded' in str(e.data).lower():
+                 logger.error(f"Rate limit exceeded fetching content for {filename}. Skipping file.")
+            elif e.status == 404:
+                 logger.error(f"File not found: {filename} at commit {pr_head_sha}. Skipping.")
+            else:
+                 logger.error(f"GitHub API error fetching content for {filename}: {e.status} {e.data}")
+            return None
+        except SyntaxError as e:
+            logger.error(f"Syntax error parsing {filename}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error processing file {filename}: {e}", exc_info=True)
+            return None
+
+    # --- Main Context Extraction Loop ---
+    for filename, changed_lines in changed_py_files.items():
+        if not filename.endswith(".py"):
+            logger.debug(f"Skipping non-Python file: {filename}")
+            continue
+
+        parser = get_parsed_file(filename)
+        if not parser:
+            context_parts.append(f"\n--- Skipped File: {filename} (Could not fetch or parse) ---")
+            continue
+
+        # Find functions/methods containing changed lines in this file
+        changed_blocks_in_file: List[Tuple[str, FunctionInfo, Optional[str]]] = [] # (type, info, class_name)
+        for func_name, func_info in parser.functions.items():
+            if changed_lines.intersection(range(func_info.start_line, func_info.end_line + 1)):
+                changed_blocks_in_file.append(("Function", func_info, None))
+        for class_name, class_info in parser.classes.items():
+             for method_name, method_info in class_info.methods.items():
+                 if changed_lines.intersection(range(method_info.start_line, method_info.end_line + 1)):
+                     changed_blocks_in_file.append(("Method", method_info, class_name))
+
+        if not changed_blocks_in_file:
+            logger.debug(f"No function/method definitions found containing changed lines in {filename}")
+            continue
+
+        file_context_parts = [f"\n--- Context from File: {filename} ---"]
+        processed_signatures_for_file = set() # Track signatures added for this file
+        processed_imports_for_file = set() # Track imports added for this file
+
+        # Extract context for each changed block found in this file
+        for block_type, block_info, parent_class_name in changed_blocks_in_file:
+            block_name = block_info.name
+            block_display_name = f"{parent_class_name}.{block_name}" if parent_class_name else block_name
+
+            file_context_parts.append(f"\n--- Context for Changed {block_type} `{block_display_name}` ---")
+            file_context_parts.append("\nFull Definition:")
+            file_context_parts.append(block_info.body_source)
+
+            # Add signatures/imports for calls made *by* this block
+            call_signatures = []
+            relevant_imports = set()
+
+            for call in block_info.calls:
+                # Check if it's a local function/method in this file
+                found_local = False
+                local_sig = None
+                # Check standalone functions first
+                if call in parser.functions:
+                    # Avoid adding signature for the block itself (recursion)
+                    if call != block_name:
+                         local_sig = parser.functions[call].signature
+                         found_local = True
+                else:
+                    # Check methods in classes (simple check)
+                    potential_method_name = call.split('.')[-1]
+                    for c_info in parser.classes.values():
+                        if potential_method_name in c_info.methods:
+                            # Avoid adding signature for the block itself
+                            if not (parent_class_name == c_info.name and potential_method_name == block_name):
+                                local_sig = c_info.methods[potential_method_name].signature
+                                found_local = True
+                                break # Take first match
+
+                if found_local and local_sig and call not in processed_signatures_for_file:
+                    call_signatures.append(f"\nSignature of Local Function/Method Called `{call}`:")
+                    call_signatures.append(local_sig)
+                    processed_signatures_for_file.add(call)
+                elif not found_local:
+                    # Check if it relates to an import (simple check)
+                    base_call = call.split('.')[0]
+                    for imp in parser.imports:
+                        # Basic check - might need refinement for complex import aliases/structures
+                        if (f"import {base_call}" in imp or f"from {base_call} import" in imp or f"as {base_call}" in imp) and imp not in processed_imports_for_file:
+                            relevant_imports.add(imp)
+                            processed_imports_for_file.add(imp)
+                            # No need to check other imports for this base_call once one is found
+                            break 
+
+            if call_signatures:
+                file_context_parts.extend(call_signatures)
+            if relevant_imports:
+                file_context_parts.append("\nRelevant Imports:")
+                file_context_parts.extend(sorted(list(relevant_imports)))
+
+        context_parts.extend(file_context_parts)
+
+    logger.info(f"Generated context for {len(context_parts)} parts.")
+    return "\n".join(context_parts).strip()
