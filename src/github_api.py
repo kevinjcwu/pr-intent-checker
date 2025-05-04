@@ -8,10 +8,10 @@ import requests # For get_pr_diff
 from typing import Optional, Dict, Any, Tuple, List, Set
 
 # Correct PyGithub imports - Import classes directly
-from github import Github, GithubException, UnknownObjectException, ContentFile, GitCommit 
+from github import Github, GithubException, UnknownObjectException, GitCommit 
 from github.PullRequest import PullRequest # Import class directly
 from github.Issue import Issue # Import class directly
-# from github.File import File as GithubFile # Not used directly
+from github.ContentFile import ContentFile # Import class directly
 
 # Force DEBUG level for action logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
@@ -321,7 +321,10 @@ def get_contextual_code(pr: PullRequest, diff_text: str) -> str: # Use imported 
             logger.debug(f"Fetching content for {filename} at ref {pr_head_sha} using PyGithub")
             content_item = repo.get_contents(filename, ref=pr_head_sha)
             if isinstance(content_item, list): logger.warning(f"Path {filename} is a directory, skipping."); return None
-            if not isinstance(content_item, ContentFile): logger.warning(f"Expected ContentFile, but got {type(content_item)} for {filename}, skipping."); return None # Use imported class
+            # Correct check using the imported ContentFile class
+            if not isinstance(content_item, ContentFile): 
+                 logger.warning(f"Expected ContentFile, but got {type(content_item)} for {filename}, skipping.")
+                 return None 
             if content_item.type != 'file': logger.warning(f"Path {filename} is not a file (type: {content_item.type}), skipping."); return None
             file_content = content_item.decoded_content.decode("utf-8")
             logger.debug(f"Successfully fetched content for {filename}")
