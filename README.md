@@ -34,6 +34,81 @@ The core goal of this action is to provide an AI model with enough information t
 
 This AST-based approach aims to strike a balance, providing crucial structural context around the specific code being modified without incurring the excessive token cost of sending entire unchanged files or unrelated code sections. *(Note: Currently, the full definition of changed functions/classes is extracted. Future refinements might explore strategies like context windowing or signature-only extraction for very large functions to further optimize token usage if needed).*
 
+## Understanding Abstract Syntax Trees (AST)
+
+The current approach relies heavily on Abstract Syntax Trees (ASTs) to understand the structure of Python code. Here's a brief explanation:
+
+**What is an AST?**
+
+An AST is a tree-like data structure that represents the syntactic structure of source code. Think of it as a detailed outline or map of your code, ignoring superficial details like comments or whitespace, but capturing the essential components like:
+
+*   Function definitions (`def my_func(...):`)
+*   Class definitions (`class MyClass:`)
+*   Assignments (`x = 5`)
+*   Function calls (`print("hello")`, `other_func(x)`)
+*   Control flow (loops like `for`, `while`; conditionals like `if`, `else`)
+*   Imports (`import os`)
+
+Each element becomes a "node" in the tree, connected in a way that reflects the code's organization.
+
+**Example:**
+
+Consider this Python code:
+
+```python
+# geometry.py
+import logging
+
+def calculate_area(length, width):
+  """Calculates area, logs result."""
+  if length <= 0 or width <= 0:
+      return None
+  area = length * width
+  logging.info(f"Calculated area: {area}")
+  return area
+
+def process_dimensions(l, w):
+  """Processes dimensions by calculating area."""
+  print("Processing dimensions...")
+  calculated_value = calculate_area(l, w)
+  if calculated_value:
+      print(f"Area result: {calculated_value}")
+  else:
+      print("Invalid dimensions for area calculation.")
+
+# Example call
+process_dimensions(10, 5)
+
+```
+
+An AST parser (like Python's built-in `ast` module) would turn this into a structure representing, among other things:
+
+*   An `Import` node for `import logging`.
+*   A `FunctionDef` node for `calculate_area` containing:
+    *   An `arguments` node for `length`, `width`.
+    *   An `If` node for the validation check.
+    *   An `Assign` node for `area = ...`.
+    *   A `Call` node for `logging.info(...)`.
+    *   A `Return` node.
+*   A `FunctionDef` node for `process_dimensions` containing:
+    *   An `arguments` node for `l`, `w`.
+    *   A `Call` node for `print(...)`.
+    *   An `Assign` node for `calculated_value = ...` which contains:
+        *   A `Call` node for `calculate_area(l, w)`.
+    *   An `If` node checking `calculated_value`.
+*   A `Call` node for `process_dimensions(10, 5)` at the module level.
+
+**Why is this useful for the Action?**
+
+By analyzing this tree structure programmatically, the action can:
+
+*   Reliably find the exact start and end lines of specific function definitions (`calculate_area`, `process_dimensions`).
+*   Identify calls made *inside* a function (e.g., `process_dimensions` calls `calculate_area`; `calculate_area` calls `logging.info`).
+*   Determine which function definition(s) contain the line numbers changed in a PR diff.
+*   Extract the full source code for just those specific function definitions that were modified.
+
+This allows the action to provide targeted, structural context to the AI model, going beyond simple text analysis of the diff.
+
 ## Usage
 
 1.  **Add Workflow:** Create a workflow file in your repository (e.g., `.github/workflows/intent_check.yml`) similar to the following:
@@ -119,4 +194,3 @@ This AST-based approach aims to strike a balance, providing crucial structural c
 
 *   `result`: The result of the evaluation (`PASS` or `FAIL`).
 *   `explanation`: The explanation provided by the AI model. If the result is `FAIL`, this explanation may include specific code snippets (formatted using Markdown diff or code syntax) highlighting the areas of concern identified by the AI, potentially referencing the context code provided.
-
