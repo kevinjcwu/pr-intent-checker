@@ -4,6 +4,7 @@ import re # Import the regular expression module
 import prompty
 import prompty.azure # Import to register the Azure invoker
 from openai import OpenAIError # Still needed for error handling
+import tiktoken # Import tiktoken for token counting
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -56,10 +57,35 @@ def evaluate_intent(issue_body: str, code_diff: str, context_code: str) -> Tuple
         logger.info(f"Executing prompt file: {DEFAULT_PROMPT_PATH}")
         # Prepare inputs dictionary for prompty.execute
         prompt_inputs = {
-            "requirements": issue_body,
-            "code_changes": code_diff,
-            "context_code": context_code # Add the generated context
+            "requirements": issue_body or "", # Ensure strings for token counting
+            "code_changes": code_diff or "",
+            "context_code": context_code or "" # Add the generated context
         }
+
+        # --- Debug Logging for Inputs and Tokens ---
+        logger.debug("--- Prompt Inputs ---")
+        logger.debug(f"Requirements:\n{prompt_inputs['requirements']}")
+        logger.debug(f"Code Changes (Diff):\n{prompt_inputs['code_changes']}")
+        logger.debug(f"Context Code:\n{prompt_inputs['context_code']}")
+        logger.debug("---------------------")
+
+        try:
+            # Estimate token counts using tiktoken (e.g., for gpt-4)
+            # Use cl100k_base encoding as it's common for newer models
+            encoding = tiktoken.get_encoding("cl100k_base")
+            req_tokens = len(encoding.encode(prompt_inputs['requirements']))
+            diff_tokens = len(encoding.encode(prompt_inputs['code_changes']))
+            context_tokens = len(encoding.encode(prompt_inputs['context_code']))
+            total_tokens = req_tokens + diff_tokens + context_tokens
+            logger.debug(f"Estimated Input Token Counts (cl100k_base):")
+            logger.debug(f"  Requirements: {req_tokens}")
+            logger.debug(f"  Code Changes: {diff_tokens}")
+            logger.debug(f"  Context Code: {context_tokens}")
+            logger.debug(f"  Total Input Tokens: {total_tokens}")
+        except Exception as e:
+            logger.warning(f"Could not estimate token count: {e}")
+        # --- End Debug Logging ---
+
 
         # Execute the prompt using the library
         # prompty should read the model config and env vars from the file

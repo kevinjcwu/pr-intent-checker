@@ -3,3 +3,4 @@ PyGithub
 python-dotenv
 pyyaml
 prompty[azure] # Installs prompty and Azure dependencies
+tiktoken # For token counting
