@@ -11,6 +11,7 @@ from github_api import (
     post_pr_comment           # Takes number, signature unchanged externally
 )
 from llm_eval import evaluate_intent
+from ast_analyzer import generate_context_code # Import the new function
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -96,9 +97,18 @@ def main():
          logger.warning(f"Linked issue #{issue_number} has an empty body. Evaluation might be inaccurate.")
           # Proceed.
 
-    # --- 4. Evaluate Intent using LLM ---
+    # --- 4. Generate AST Context ---
+    logger.info("Generating AST context code from diff and file contents...")
+    context_code = generate_context_code(code_diff, pr)
+    if not context_code:
+        logger.warning("AST context code generation resulted in empty context. Proceeding without it.")
+        # Optionally, you could decide to fail here if context is critical
+        # context_code = "Context could not be generated." # Or provide a placeholder
+
+    # --- 5. Evaluate Intent using LLM (with context) ---
     logger.info("Evaluating PR intent using LLM via prompty.execute...")
-    result, explanation = evaluate_intent(issue_body, code_diff)
+    # Pass the generated context_code to the evaluation function
+    result, explanation = evaluate_intent(issue_body, code_diff, context_code)
 
     if result is None:
         logger.error("LLM evaluation failed.")
@@ -108,7 +118,7 @@ def main():
 
     logger.info(f"LLM Evaluation Result: {result}")
 
-    # --- 5. Set Outputs and Post Comment ---
+    # --- 6. Set Outputs and Post Comment ---
     set_action_output("result", result)
     set_action_output("explanation", explanation)
 
@@ -119,7 +129,7 @@ def main():
     if not comment_posted:
         logger.warning(f"Failed to post comment to PR #{pr_number}.") # Don't fail the action for this
 
-    # --- 6. Exit with appropriate status ---
+    # --- 7. Exit with appropriate status ---
     if result == "PASS":
         logger.info("PR Intent Check Passed.")
         sys.exit(0) # Exit with success code

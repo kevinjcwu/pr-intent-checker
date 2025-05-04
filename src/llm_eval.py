@@ -23,15 +23,18 @@ DEFAULT_PROMPT_PATH = "/app/prompts/intent_check.prompty"
 
 # Removed load_prompt_template_string function
 
-def evaluate_intent(issue_body, code_diff):
+# Import Tuple type hint
+from typing import Tuple, Optional
+
+def evaluate_intent(issue_body: str, code_diff: str, context_code: str) -> Tuple[Optional[str], Optional[str]]:
     """
-    Evaluates code diff against issue body using prompty.execute and Azure OpenAI API.
+    Evaluates code diff against issue body using prompty.execute and Azure OpenAI API,
+    incorporating AST-based code context.
 
     Args:
         issue_body (str): The content of the linked GitHub issue.
         code_diff (str): The diff content of the pull request.
-        prompt_template (Prompt): The loaded prompty object.
-        model (str): The OpenAI model to use.
+        context_code (str): The AST-derived context code string.
 
     Returns:
         tuple: (result, explanation) where result is 'PASS' or 'FAIL',
@@ -54,7 +57,8 @@ def evaluate_intent(issue_body, code_diff):
         # Prepare inputs dictionary for prompty.execute
         prompt_inputs = {
             "requirements": issue_body,
-            "code_changes": code_diff
+            "code_changes": code_diff,
+            "context_code": context_code # Add the generated context
         }
 
         # Execute the prompt using the library

@@ -1,9 +1,10 @@
 import os
 import json
 import logging
+import base64 # Needed for decoding file content
 from typing import Optional, Dict, Any, Tuple
 
-from github import Github, GithubException, PullRequest, Issue
+from github import Github, GithubException, PullRequest, Issue, ContentFile
 from github.GithubException import UnknownObjectException
 
 # Force DEBUG level for action logging
@@ -249,6 +250,58 @@ def find_linked_issue_number(pr: PullRequest.PullRequest) -> Optional[int]:
         return None
     except Exception as e_outer:
         logger.error(f"An unexpected error occurred while finding linked issue for PR #{pr.number}: {e_outer}", exc_info=True)
+        return None
+
+
+def get_file_content(pr: PullRequest.PullRequest, file_path: str) -> Optional[str]:
+    """
+    Gets the content of a specific file at the PR's head commit.
+
+    Args:
+        pr: The PyGithub PullRequest object.
+        file_path: The path to the file within the repository.
+
+    Returns:
+        The decoded file content as a string, or None on failure.
+    """
+    if not pr:
+        logger.error("Valid PullRequest object is required to fetch file content.")
+        return None
+    if not file_path:
+        logger.error("File path is required.")
+        return None
+
+    try:
+        # Get the content object using the PR's head SHA as the reference
+        content_file: ContentFile = repo.get_contents(file_path, ref=pr.head.sha)
+
+        # Check if it's actually a file (not a directory)
+        if isinstance(content_file, list):
+             logger.error(f"Path '{file_path}' refers to a directory, not a file, in PR #{pr.number} head ({pr.head.sha}).")
+             return None
+        if content_file.type != 'file':
+            logger.error(f"Path '{file_path}' is not a file (type: {content_file.type}) in PR #{pr.number} head ({pr.head.sha}).")
+            return None
+
+        # Content is base64 encoded, decode it
+        if content_file.content:
+            decoded_content = base64.b64decode(content_file.content).decode('utf-8')
+            logger.info(f"Successfully retrieved and decoded content for '{file_path}' from PR #{pr.number} head ({pr.head.sha}).")
+            return decoded_content
+        else:
+            # Handle case of empty file
+            logger.info(f"File '{file_path}' from PR #{pr.number} head ({pr.head.sha}) is empty.")
+            return ""
+
+    except UnknownObjectException:
+        logger.error(f"File '{file_path}' not found in PR #{pr.number} head ({pr.head.sha}).")
+        return None
+    except GithubException as e:
+        logger.error(f"GitHub API error getting content for '{file_path}' in PR #{pr.number} head ({pr.head.sha}): {e.status} {e.data}")
+        return None
+    except Exception as e:
+        # Catch potential decoding errors or other issues
+        logger.error(f"Error processing content for '{file_path}' in PR #{pr.number} head ({pr.head.sha}): {e}")
         return None
 
 
