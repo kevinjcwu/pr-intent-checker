@@ -99,7 +99,8 @@ def main():
 
     # --- 4. Get Contextual Code ---
     logger.info("Extracting contextual code snippets...")
-    contextual_code = get_contextual_code(pr, code_diff)
+    # Pass the PR object and diff text
+    contextual_code = get_contextual_code(pr, code_diff) 
     if not contextual_code:
         logger.warning("Could not extract contextual code. Proceeding with diff only.")
         # Optionally, you could fail here if context is deemed essential

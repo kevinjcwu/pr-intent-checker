@@ -1,4 +1,5 @@
 requests
+PyGithub # Needed for core GitHub API interactions
 python-dotenv
 pyyaml
 prompty[azure] # Installs prompty and Azure dependencies
