@@ -2,15 +2,37 @@
 
 This GitHub Action uses an AI model (via Azure OpenAI Service) to analyze the code changes in a Pull Request (PR) and compare them against the requirements specified in a linked GitHub Issue. It helps identify potential "intent drift" early in the development cycle.
 
-## How it Works
+## How it Works: Evolution of Context
 
-1.  **Trigger:** The action runs automatically when a Pull Request is opened or updated in a repository where it's configured.
-2.  **Link Issue:** The action searches the Pull Request description for specific keywords and an issue number to identify the linked issue containing the requirements.
-3.  **Fetch Data:** It fetches the PR code diff and the body of the linked issue using the GitHub API.
-4.  **AI Analysis:** It sends the issue requirements and the code diff to your configured Azure OpenAI model (e.g., GPT-4o) using a predefined prompt.
-5.  **Evaluation:** The AI model evaluates whether the code changes satisfy the requirements.
-6.  **Report Result:** The action parses the AI's response to determine a `PASS` or `FAIL` result.
-7.  **Status Check & Comment:** It sets the status check on the PR accordingly (failing the check on `FAIL`). It then posts the AI's explanation as a comment on the PR. If the result is `FAIL`, the explanation will attempt to include specific code snippets from the diff that illustrate the detected misalignment with the requirements.
+The core goal of this action is to provide an AI model with enough information to determine if a PR's code changes fulfill the intent described in a linked issue. The strategy for providing this information has evolved:
+
+**1. Initial Approach: Diff-Only Context**
+
+*   The action was initially designed to fetch only the **PR code diff** and the **linked issue body**.
+*   These two pieces of text were sent to the AI model.
+*   **Limitation:** While simple, relying solely on the diff proved insufficient. The diff only shows *what lines changed*, but lacks the surrounding code structure. The AI couldn't easily see the full context of a modified function or class, potentially leading to inaccurate assessments of whether the change truly met the issue's requirements within the broader codebase structure.
+
+**2. The Context Challenge: Diff vs. Full Files vs. AST**
+
+*   Simply sending the **entire content of every changed file** along with the diff would provide maximum context, but this is often impractical and costly due to the large number of tokens involved, especially for large files or PRs touching many files.
+*   We needed a way to provide *more* context than just the diff, but *less* than entire files, focusing on the most relevant structural information around the changes.
+
+**3. Current Approach: AST-Based Structural Context**
+
+*   The action now uses a more sophisticated approach leveraging **Abstract Syntax Trees (AST)** for Python files:
+    *   **Trigger:** Runs when a PR is opened or updated.
+    *   **Link Issue:** Identifies the linked issue via timeline events or PR body keywords.
+    *   **Fetch Data:** Fetches the PR code diff, linked issue body, and the **full content** of any changed Python (`.py`) files.
+    *   **Analyze Structure (AST):**
+        *   Parses the full content of each changed Python file into an AST.
+        *   Identifies which functions or classes within the AST contain the lines modified in the diff.
+        *   Extracts the **complete definition** (source code) of these specific changed functions/classes.
+        *   Gathers related context like relevant import statements and calls made *by* the changed code.
+    *   **AI Analysis:** Sends the issue requirements, the code diff, and this extracted structural context (`CONTEXT CODE`) to the AI model.
+    *   **Evaluation:** The AI uses the diff for line changes and the `CONTEXT CODE` to understand the structural impact and implementation details within the modified functions/classes.
+    *   **Report Result:** Parses the AI response for `PASS`/`FAIL` and posts a comment on the PR, potentially including relevant code snippets from the diff or context code if the result is `FAIL`.
+
+This AST-based approach aims to strike a balance, providing crucial structural context around the specific code being modified without incurring the excessive token cost of sending entire unchanged files or unrelated code sections. *(Note: Currently, the full definition of changed functions/classes is extracted. Future refinements might explore strategies like context windowing or signature-only extraction for very large functions to further optimize token usage if needed).*
 
 ## Usage
 
@@ -76,7 +98,7 @@ This GitHub Action uses an AI model (via Azure OpenAI Service) to analyze the co
     *   `Resolves: #<number>`
     *   `Resolved #<number>`
 
-    *(Case is ignored, e.g., `closes #123` works too).*
+    *(Case is ignored, e.g., `closes #123` works too). The action first checks timeline events for explicit links, then falls back to checking the PR body.*
 
     **Example PR Description:**
 
@@ -96,8 +118,5 @@ This GitHub Action uses an AI model (via Azure OpenAI Service) to analyze the co
 ## Outputs
 
 *   `result`: The result of the evaluation (`PASS` or `FAIL`).
-*   `explanation`: The explanation provided by the AI model. If the result is `FAIL`, this explanation may include specific code snippets (formatted using Markdown diff syntax) highlighting the areas of concern identified by the AI.
+*   `explanation`: The explanation provided by the AI model. If the result is `FAIL`, this explanation may include specific code snippets (formatted using Markdown diff or code syntax) highlighting the areas of concern identified by the AI, potentially referencing the context code provided.
 
-## Contributing
-
-Feel free to submit issues or pull requests to the `kevinjcwu/pr-intent-checker` repository.
