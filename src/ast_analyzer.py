@@ -48,6 +48,9 @@ class CodeAnalyzer(ast.NodeVisitor):
 
         if self._current_class_name:
             # This is a method
+            # Ensure the method list is initialized for the class
+            if self._current_class_name not in self.method_calls:
+                 self.method_calls[self._current_class_name] = {}
             self.method_calls[self._current_class_name][func_name] = []
         else:
             # This is a standalone function
@@ -61,52 +64,35 @@ class CodeAnalyzer(ast.NodeVisitor):
                     call_name = self._get_call_name(sub_node)
                     if call_name:
                         if self._current_class_name:
-                            self.method_calls[self._current_class_name][func_name].append(call_name)
+                            # Ensure list exists before appending
+                            if func_name in self.method_calls.get(self._current_class_name, {}):
+                                self.method_calls[self._current_class_name][func_name].append(call_name)
+                            else:
+                                # This case should ideally not happen due to initialization above, but log if it does
+                                logger.warning(f"Attempted to log call '{call_name}' for uninitialized method '{func_name}' in class '{self._current_class_name}'.")
                         else:
-                            self.function_calls[func_name].append(call_name)
+                             # Ensure list exists before appending
+                            if func_name in self.function_calls:
+                                self.function_calls[func_name].append(call_name)
+                            else:
+                                # This case should ideally not happen due to initialization above, but log if it does
+                                logger.warning(f"Attempted to log call '{call_name}' for uninitialized function '{func_name}'.")
 
-        # Don't call generic_visit if we manually walked the body for calls
-        # self.generic_visit(node) # If needed for args, decorators etc.
         self._current_function_name = None # Reset when leaving function scope
 
     def _get_call_name(self, node: ast.Call) -> Optional[str]:
-        """Helper to get the name of the function/method being called."""
+        """Helper to get the name of the function/method being called using ast.unparse."""
+        # Use ast.unparse (requires Python 3.9+)
         try:
-            # Simple name call (e.g., print(), local_func())
-            if isinstance(node.func, ast.Name):
-                return node.func.id
-            # Attribute call (e.g., math.sqrt(), self.method(), obj.attr.method())
-            elif isinstance(node.func, ast.Attribute):
-                 # Attempt to reconstruct the full call chain (e.g., os.path.join)
-                 # This can be complex, ast.unparse is best if available
-                 try:
-                     return ast.unparse(node.func)
-                 except AttributeError: # Fallback for older Python or complex cases
-                     # Simple obj.method
-                     if isinstance(node.func.value, ast.Name):
-                         return f"{node.func.value.id}.{node.func.attr}"
-                     # Fallback for more complex chains like obj.attr.method
-                     else:
-                         return f"?.{node.func.attr}" # Indicate unknown base
-            # Other complex call types (e.g., subscript calls like d['key']()) - ignore for now
-            else:
-                return None
-        except Exception:
-            # Handle potential errors during name reconstruction
-            logger.warning(f"Could not determine call name for node: {ast.dump(node)}", exc_info=True)
-            return None
+            return ast.unparse(node.func)
+        except Exception as e:
+            logger.warning(f"Could not determine call name via ast.unparse for node: {ast.dump(node)} - Error: {e}", exc_info=True)
+            return None # Avoid complex fallbacks if unparse fails
 
 
 def parse_diff(diff: str) -> Dict[str, Set[int]]:
     """
-    Parses a git diff string to find changed files and the line numbers added in the new version.
-
-    Args:
-        diff: The git diff string.
-
-    Returns:
-        A dictionary where keys are file paths and values are sets of added line numbers
-        (relative to the *new* file). Returns empty dict if diff is None or empty.
+    Parses a git diff string to find changed Python files and added line numbers.
     """
     if not diff:
         return {}
@@ -114,67 +100,156 @@ def parse_diff(diff: str) -> Dict[str, Set[int]]:
     changed_lines: Dict[str, Set[int]] = {}
     current_file: Optional[str] = None
     new_file_line_num = 0
-
-    # Regex to find file paths in the diff header (e.g., +++ b/path/to/file.py)
     file_path_regex = re.compile(r"^\+\+\+ b/(.*)")
-    # Regex to find hunk headers (e.g., @@ -1,4 +1,5 @@)
     hunk_header_regex = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
     for line in diff.splitlines():
         file_match = file_path_regex.match(line)
         if file_match:
             current_file = file_match.group(1)
+            if not current_file.endswith(".py"): # Focus only on Python files
+                current_file = None
+                continue
             if current_file not in changed_lines:
                 changed_lines[current_file] = set()
-            continue # Move to next line after finding file path
+            continue
 
-        if current_file is None:
-            continue # Skip lines before the first file header
+        if current_file is None: continue # Skip lines if not in a python file diff
 
         hunk_match = hunk_header_regex.match(line)
         if hunk_match:
-            # Reset line number at the start of each hunk based on the '+' part
             new_file_line_num = int(hunk_match.group(1))
-            continue # Move to next line after finding hunk header
+            continue
 
-        # Process lines within a hunk
         if line.startswith('+'):
-            # This line was added, record its number in the new file
             changed_lines[current_file].add(new_file_line_num)
             new_file_line_num += 1
-        elif line.startswith('-'):
-            # This line was removed, don't increment new file line number
-            pass
-        elif not line.startswith('\\'): # Ignore '\ No newline at end of file'
-            # This line is context, increment new file line number
+        elif not line.startswith('-') and not line.startswith('\\'): # Count context lines
             new_file_line_num += 1
 
-    # Filter out non-python files if desired (optional)
-    python_files = {f: lines for f, lines in changed_lines.items() if f.endswith(".py")}
-
-    logger.debug(f"Parsed diff. Changed Python files and added line numbers: {python_files}")
-    return python_files
+    logger.debug(f"Parsed diff. Changed Python files and added line numbers: {changed_lines}")
+    return changed_lines
 
 
 def _get_node_line_range(node: ast.AST) -> Tuple[int, int]:
     """Safely get the start and end line number for an AST node."""
     start_line = getattr(node, 'lineno', -1)
-    end_line = getattr(node, 'end_lineno', start_line) # Use start_line if end_lineno missing
+    end_line = getattr(node, 'end_lineno', start_line)
     return start_line, end_line
 
+def _analyze_python_file(file_path: str, pr: PullRequest.PullRequest) -> Optional[CodeAnalyzer]:
+    """Fetches, parses, and analyzes a single Python file using CodeAnalyzer."""
+    logger.info(f"Analyzing file: {file_path}")
+    full_content = get_file_content(pr, file_path)
+
+    if full_content is None:
+        logger.warning(f"Could not fetch content for {file_path}. Skipping analysis.")
+        return None
+    if not full_content.strip():
+        logger.info(f"File {file_path} is empty. Skipping analysis.")
+        return None
+
+    try:
+        tree = ast.parse(full_content)
+        analyzer = CodeAnalyzer()
+        analyzer.visit(tree)
+        return analyzer
+    except SyntaxError as e:
+        logger.error(f"Syntax error parsing {file_path}: {e}. Skipping analysis.")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error analyzing AST for {file_path}: {e}", exc_info=True)
+        return None
+
+def _find_relevant_nodes(analyzer: CodeAnalyzer, added_lines: Set[int]) -> List[Tuple[str, ast.AST]]:
+    """Identifies functions/classes in the analyzer results that contain added lines."""
+    relevant_nodes: List[Tuple[str, ast.AST]] = []
+    processed_nodes: Set[str] = set()
+
+    # Check functions
+    for func_name, node in analyzer.function_defs.items():
+        start, end = _get_node_line_range(node)
+        if any(start <= line <= end for line in added_lines):
+            if func_name not in processed_nodes:
+                 relevant_nodes.append((func_name, node))
+                 processed_nodes.add(func_name)
+
+    # Check classes and their methods
+    for class_name, node in analyzer.class_defs.items():
+        if class_name in processed_nodes: continue
+        start, end = _get_node_line_range(node)
+        class_or_method_changed = any(start <= line <= end for line in added_lines)
+
+        if not class_or_method_changed:
+            for method_node in node.body:
+                if isinstance(method_node, ast.FunctionDef):
+                    m_start, m_end = _get_node_line_range(method_node)
+                    if any(m_start <= line <= m_end for line in added_lines):
+                        class_or_method_changed = True
+                        break
+        if class_or_method_changed:
+            relevant_nodes.append((class_name, node))
+            processed_nodes.add(class_name)
+
+    logger.debug(f"Found {len(relevant_nodes)} relevant nodes containing changes.")
+    return relevant_nodes
+
+def _extract_node_context(node_name: str, node: ast.AST, analyzer: CodeAnalyzer, file_path: str) -> List[str]:
+    """Extracts formatted context strings for a single relevant node."""
+    node_context_parts: List[str] = []
+    node_type = "Function" if isinstance(node, ast.FunctionDef) else "Class"
+
+    # 1. Add Full Definition using ast.unparse
+    node_context_parts.append(f"--- Full Definition of Changed {node_type} `{node_name}` (in {file_path}) ---")
+    try:
+        source_code = ast.unparse(node)
+        node_context_parts.append(source_code)
+    except Exception as e:
+        logger.error(f"Could not extract source for {node_type} '{node_name}' using ast.unparse: {e}")
+        node_context_parts.append(f"# Error: Could not extract source code for {node_name}")
+
+    # 2. Add Calls Made By This Node
+    calls_made: List[str] = []
+    if isinstance(node, ast.FunctionDef):
+        calls_made = analyzer.function_calls.get(node_name, [])
+    elif isinstance(node, ast.ClassDef):
+         for method_name, calls in analyzer.method_calls.get(node_name, {}).items():
+             calls_made.extend(calls)
+
+    if calls_made:
+         unique_calls = sorted(list(set(calls_made)))
+         node_context_parts.append(f"\n--- Calls made by `{node_name}` (or its methods) ---")
+         for call in unique_calls:
+             call_context = f"{call}(...)" # Default
+             found_context = False
+             base_name = call.split('.')[0]
+             # Check imports
+             for imp in analyzer.imports:
+                 if f"import {base_name}" in imp or f"from {base_name}" in imp or f".{base_name}" in imp:
+                     call_context += f" # Requires: {imp}"
+                     found_context = True
+                     break
+             # Check local functions/methods if not found in imports
+             if not found_context:
+                 if call in analyzer.function_defs:
+                     try: sig = ast.unparse(analyzer.function_defs[call].args); call_context = f"def {call}{sig}: ..."
+                     except Exception: logger.warning(f"Could not unparse args for local function call '{call}'")
+                 elif any(call in methods for methods in analyzer.method_calls.values()):
+                     for c_name, methods in analyzer.method_calls.items():
+                         if call in methods:
+                             class_node = analyzer.class_defs.get(c_name)
+                             method_node = next((m for m in class_node.body if isinstance(m, ast.FunctionDef) and m.name == call), None) if class_node else None
+                             if method_node:
+                                 try: sig = ast.unparse(method_node.args); call_context = f"def {call}{sig}: ... # Method in class {c_name}"
+                                 except Exception: logger.warning(f"Could not unparse args for local method call '{call}' in class '{c_name}'")
+                             break
+             node_context_parts.append(call_context)
+
+    return node_context_parts
 
 def generate_context_code(diff: str, pr: PullRequest.PullRequest) -> str:
-    """
-    Generates the CONTEXT CODE section by analyzing changed files using AST.
-
-    Args:
-        diff: The git diff string for the PR.
-        pr: The PyGithub PullRequest object.
-
-    Returns:
-        A formatted string containing the context code, or an empty string if no context found.
-    """
-    context_parts: List[str] = []
+    """Generates the CONTEXT CODE section by analyzing changed files using AST."""
+    overall_context_parts: List[str] = []
     changed_py_files = parse_diff(diff)
 
     if not changed_py_files:
@@ -182,151 +257,37 @@ def generate_context_code(diff: str, pr: PullRequest.PullRequest) -> str:
         return ""
 
     for file_path, added_lines in changed_py_files.items():
-        logger.info(f"Analyzing changed file: {file_path}")
-        full_content = get_file_content(pr, file_path)
-
-        if full_content is None:
-            logger.warning(f"Could not fetch content for {file_path}. Skipping AST analysis for this file.")
+        analyzer = _analyze_python_file(file_path, pr)
+        if not analyzer:
+            overall_context_parts.append(f"--- Could not analyze {file_path} ---")
+            overall_context_parts.append("\n")
             continue
 
-        if not full_content.strip():
-            logger.info(f"File {file_path} is empty. Skipping AST analysis.")
+        relevant_nodes = _find_relevant_nodes(analyzer, added_lines)
+        if not relevant_nodes:
+            logger.info(f"No specific function/class definitions found containing changes in {file_path}.")
             continue
 
-        try:
-            tree = ast.parse(full_content)
-            analyzer = CodeAnalyzer()
-            analyzer.visit(tree)
+        file_context_parts: List[str] = []
+        processed_node_names: Set[str] = set()
 
-            # Find functions/classes containing the added lines
-            relevant_nodes: List[Tuple[str, ast.AST]] = [] # List of (name, node)
-            for func_name, node in analyzer.function_defs.items():
-                start, end = _get_node_line_range(node)
-                if any(start <= line <= end for line in added_lines):
-                    relevant_nodes.append((func_name, node))
-            for class_name, node in analyzer.class_defs.items():
-                 start, end = _get_node_line_range(node)
-                 # Check if class definition itself changed or any of its methods changed
-                 class_or_method_changed = any(start <= line <= end for line in added_lines)
-                 if not class_or_method_changed:
-                     # Check methods within the class
-                     for method_node in node.body:
-                         if isinstance(method_node, ast.FunctionDef):
-                             m_start, m_end = _get_node_line_range(method_node)
-                             if any(m_start <= line <= m_end for line in added_lines):
-                                 class_or_method_changed = True
-                                 break # Found a changed method
-                 if class_or_method_changed:
-                     relevant_nodes.append((class_name, node)) # Add the whole class if it or a method changed
+        for node_name, node in relevant_nodes:
+            if node_name in processed_node_names: continue
+            processed_node_names.add(node_name)
+            file_context_parts.extend(_extract_node_context(node_name, node, analyzer, file_path))
 
-            if not relevant_nodes:
-                logger.info(f"No specific function/class definitions found containing changes in {file_path}.")
-                continue # Move to next file
+        # Add relevant imports for the file if context was generated
+        if file_context_parts and analyzer.imports:
+             file_context_parts.append(f"\n--- Relevant Imports from {file_path} ---")
+             file_context_parts.extend(sorted(list(set(analyzer.imports))))
 
-            # --- Build Context for this File ---
-            file_context_parts: List[str] = []
-            processed_node_names: Set[str] = set() # Avoid duplicating nodes
+        if file_context_parts:
+            overall_context_parts.extend(file_context_parts)
+            overall_context_parts.append("\n")
 
-            for node_name, node in relevant_nodes:
-                if node_name in processed_node_names:
-                    continue
-                processed_node_names.add(node_name)
-
-                node_type = "Function" if isinstance(node, ast.FunctionDef) else "Class"
-                file_context_parts.append(f"--- Full Definition of Changed {node_type} `{node_name}` (in {file_path}) ---")
-                try:
-                    # Use ast.unparse if available (Python 3.9+)
-                    source_code = ast.unparse(node)
-                except AttributeError:
-                    # Fallback: Try to slice from original content (less reliable)
-                    start_line, end_line = _get_node_line_range(node)
-                    if start_line > 0 and end_line >= start_line:
-                         source_code = "\n".join(full_content.splitlines()[start_line-1:end_line])
-                    else:
-                         source_code = f"# Could not extract source for {node_name}"
-                file_context_parts.append(source_code)
-
-                # Add context about calls made *by* this function/methods of class
-                calls_made: List[str] = []
-                if isinstance(node, ast.FunctionDef):
-                    calls_made = analyzer.function_calls.get(node_name, [])
-                elif isinstance(node, ast.ClassDef):
-                     for method_name, calls in analyzer.method_calls.get(node_name, {}).items():
-                         calls_made.extend(calls)
-
-                if calls_made:
-                     file_context_parts.append(f"\n--- Calls made by `{node_name}` (or its methods) ---")
-                     # Try to find signatures/imports for these calls
-                     for call in set(calls_made): # Use set to avoid duplicates
-                         if '.' not in call: # Likely local function/method call
-                             if call in analyzer.function_defs:
-                                 sig = ast.unparse(analyzer.function_defs[call].args) # Get args part
-                                 file_context_parts.append(f"def {call}{sig}: ...")
-                             elif any(call in methods for methods in analyzer.method_calls.values()):
-                                 # Find which class it belongs to (simplified)
-                                 for c_name, methods in analyzer.method_calls.items():
-                                     if call in methods:
-                                         # Find the method node within the class node
-                                         class_node = analyzer.class_defs.get(c_name)
-                                         method_node = next((m for m in class_node.body if isinstance(m, ast.FunctionDef) and m.name == call), None) if class_node else None
-                                         if method_node:
-                                             sig = ast.unparse(method_node.args)
-                                             file_context_parts.append(f"def {call}{sig}: ... # Method in class {c_name}")
-                                         else:
-                                              file_context_parts.append(f"{call}(...) # Local method call")
-                                         break
-                             else:
-                                 file_context_parts.append(f"{call}(...) # Local call, definition not found in file?")
-                         else: # Likely imported or attribute call
-                             # Find relevant import statement
-                             base_name = call.split('.')[0]
-                             found_import = False
-                             for imp in analyzer.imports:
-                                 if f"import {base_name}" in imp or f"from {base_name}" in imp or f".{base_name}" in imp:
-                                     file_context_parts.append(f"{call}(...) # Requires: {imp}")
-                                     found_import = True
-                                     break
-                             if not found_import:
-                                 file_context_parts.append(f"{call}(...) # Imported or attribute call")
-
-
-            # Add relevant imports for the file
-            if analyzer.imports:
-                 file_context_parts.append(f"\n--- Relevant Imports from {file_path} ---")
-                 # Could filter imports based on calls made, but let's include all for now
-                 file_context_parts.extend(analyzer.imports)
-
-            context_parts.extend(file_context_parts)
-            context_parts.append("\n") # Add separator between files
-
-        except SyntaxError as e:
-            logger.error(f"Syntax error parsing {file_path}: {e}. Skipping AST analysis for this file.")
-            context_parts.append(f"--- Error Analyzing {file_path} ---")
-            context_parts.append(f"Could not parse file due to SyntaxError: {e}")
-            context_parts.append("\n")
-        except Exception as e:
-            logger.error(f"Unexpected error analyzing {file_path}: {e}", exc_info=True)
-            context_parts.append(f"--- Error Analyzing {file_path} ---")
-            context_parts.append(f"An unexpected error occurred: {e}")
-            context_parts.append("\n")
-
-
-    return "\n".join(context_parts).strip()
+    return "\n".join(overall_context_parts).strip()
 
 # Example Usage (for testing purposes)
 if __name__ == '__main__':
-    # This block will only run when the script is executed directly
-    # You would need to mock the PR object and get_file_content for real testing
     print("AST Analyzer module loaded.")
-    # Add test code here if needed, e.g.:
-    # test_diff = """
-    # --- a/sample.py
-    # +++ b/sample.py
-    # @@ -1,3 +1,4 @@
-    #  def hello():
-    #      print("Hello")
-    # +    print("World")
-    # """
-    # changed = parse_diff(test_diff)
-    # print(changed)
-    # # Mock PR and get_file_content would be needed for generate_context_code
+    # Add test code here if needed
