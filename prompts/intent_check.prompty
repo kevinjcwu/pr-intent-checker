@@ -38,13 +38,25 @@ model:
 **ANALYSIS TASK:**
     1. Carefully review the **GitHub Issue Requirements**. Understand the goal, the acceptance criteria, and the intended functionality or fix.
     2. Analyze the **Proposed Code Changes (Diff)** and the **Context Code**. The diff shows line-level changes, while the context code provides the full structure (e.g., complete function definitions) of the modified code sections and related imports/calls.
-    3. Compare the code changes, using the provided context, against the requirements. Does the code logically implement what the issue asked for? Does it cover all specified acceptance criteria? Are there any parts of the requirements that seem unaddressed or incorrectly implemented by the code changes? Use the **Context Code** to understand the full implementation of changed functions/classes.
-    4. **If and only if** you determine the result is `FAIL` because the code changes do not meet the requirements, identify the specific lines or small blocks of code from the **CODE CHANGES (DIFF)** or **CONTEXT CODE** inputs that demonstrate the discrepancy or failure to meet requirements. Quote these relevant code snippets accurately in your explanation using Markdown code fences (e.g., ```python ... ``` for context code, ```diff ... ``` for diff).
+3. Compare the **Proposed Code Changes (Diff)** (and **Context Code** where applicable) against the **GitHub Issue Requirements**.
+    *   For **each** acceptance criterion listed in the **GitHub Issue Requirements**:
+        *   Determine if the proposed changes address this criterion.
+        *   Consider all types of changes relevant to the criterion, including source code modifications, test additions, documentation updates, configuration changes, etc. Ensure you check the **CODE CHANGES (DIFF)** for evidence of these, if applicable.
+    *   Overall, does the submission logically and completely implement what the issue asked for?
+    *   Are there any parts of the requirements (including all acceptance criteria) that seem unaddressed or incorrectly implemented by the changes?
+
+4. If you determine the result is `FAIL` because the changes do not fully meet the requirements:
+    *   Clearly state which specific requirement(s) or acceptance criterion/criteria are not met or are incorrectly implemented.
+    *   If the discrepancy is visible in the provided **CODE CHANGES (DIFF)** or **CONTEXT CODE** (e.g., incorrect logic, a flawed test), quote the relevant snippets using Markdown code fences.
+    *   If the failure is due to an *omission* (e.g., missing documentation update as per an acceptance criterion, missing test cases for a feature, an unaddressed requirement), clearly state what is missing. Even if there's no "diff" for a missing item, its absence should be noted if it's a requirement.
 
 **OUTPUT FORMAT:**
 Provide a concise explanation summarizing your analysis.
-*   If the result is `PASS`, simply provide the explanation.
-*   If the result is `FAIL`, provide the explanation AND include the relevant quoted code snippets from the diff that illustrate the failure, using Markdown code fences like ```diff ... ```.
+*   If the result is `PASS`, provide the explanation.
+*   If the result is `FAIL`, the explanation **must** detail:
+    *   Which specific requirement(s) or acceptance criterion/criteria were not met or were incorrectly implemented.
+    *   If applicable, relevant quoted code snippets from the **CODE CHANGES (DIFF)** or **CONTEXT CODE** that illustrate an incorrect implementation or a partial implementation.
+    *   If the failure is due to an omission (e.g., missing documentation, missing tests that were required by the acceptance criteria), a clear statement of what is missing.
 
 **IMPORTANT:** Your response MUST end with *exactly* one of the following lines, with no extra text after it:
 `Result: PASS`
