@@ -38,25 +38,27 @@ model:
 **ANALYSIS TASK:**
     1. Carefully review the **GitHub Issue Requirements**. Understand the goal, the acceptance criteria, and the intended functionality or fix.
     2. Analyze the **Proposed Code Changes (Diff)** and the **Context Code**. The diff shows line-level changes, while the context code provides the full structure (e.g., complete function definitions) of the modified code sections and related imports/calls.
-3. Compare the **Proposed Code Changes (Diff)** (and **Context Code** where applicable) against the **GitHub Issue Requirements**.
-    *   For **each** acceptance criterion listed in the **GitHub Issue Requirements**:
-        *   Determine if the proposed changes address this criterion.
-        *   Consider all types of changes relevant to the criterion, including source code modifications, test additions, documentation updates, configuration changes, etc. Ensure you check the **CODE CHANGES (DIFF)** for evidence of these, if applicable.
-    *   Overall, does the submission logically and completely implement what the issue asked for?
-    *   Are there any parts of the requirements (including all acceptance criteria) that seem unaddressed or incorrectly implemented by the changes?
-
-4. If you determine the result is `FAIL` because the changes do not fully meet the requirements:
-    *   Clearly state which specific requirement(s) or acceptance criterion/criteria are not met or are incorrectly implemented.
-    *   If the discrepancy is visible in the provided **CODE CHANGES (DIFF)** or **CONTEXT CODE** (e.g., incorrect logic, a flawed test), quote the relevant snippets using Markdown code fences.
-    *   If the failure is due to an *omission* (e.g., missing documentation update as per an acceptance criterion, missing test cases for a feature, an unaddressed requirement), clearly state what is missing. Even if there's no "diff" for a missing item, its absence should be noted if it's a requirement.
+3. **Detailed Criterion Analysis:**
+    *   For **each individual acceptance criterion** listed in the **GitHub Issue Requirements**:
+        *   Thoroughly examine the **Proposed Code Changes (Diff)** and **Context Code** to determine if the criterion is addressed.
+        *   Consider all relevant aspects: source code logic, test coverage, documentation updates, configuration changes, etc.
+        *   Assign an emoji status to this criterion:
+            *   Use ✅ if the criterion is fully and correctly addressed (`MET`).
+            *   Use ❌ if the criterion is not addressed (`NOT MET`).
+            *   Use ❌ if the criterion is addressed but the implementation is flawed, incorrect, or introduces issues (`INCORRECTLY IMPLEMENTED`).
+        *   If the status is ❌, prepare a brief explanation for the "Reasoning" section. If the discrepancy is visible in the code, identify relevant snippets from **CODE CHANGES (DIFF)** or **CONTEXT CODE**. If it's an omission, note what's missing.
+    *   Based on the analysis of all criteria, determine if the overall submission logically and completely implements what the issue asked for. This will inform your final `Result: PASS` or `Result: FAIL`.
 
 **OUTPUT FORMAT:**
-Provide a concise explanation summarizing your analysis.
-*   If the result is `PASS`, provide the explanation.
-*   If the result is `FAIL`, the explanation **must** detail:
-    *   Which specific requirement(s) or acceptance criterion/criteria were not met or were incorrectly implemented.
-    *   If applicable, relevant quoted code snippets from the **CODE CHANGES (DIFF)** or **CONTEXT CODE** that illustrate an incorrect implementation or a partial implementation.
-    *   If the failure is due to an omission (e.g., missing documentation, missing tests that were required by the acceptance criteria), a clear statement of what is missing.
+Your explanation **must** include the following structure:
+
+1.  **Overall Summary:** A concise summary of your analysis.
+2.  **Acceptance Criteria Checklist:** For each acceptance criterion from the **GitHub Issue Requirements** (reproduce the criterion text):
+    *   **Criterion:** "[Exact text of the criterion]"
+        *   **Status:** ✅ / ❌
+        *   **Reasoning:** (Provide a brief explanation *only if* the status is ❌. If ✅, this can be omitted or be very brief like "Implemented as required.")
+            *   If the status is ❌ due to omission (`NOT MET`), state what is missing (e.g., "Documentation update for this feature is missing.").
+            *   If the status is ❌ due to flawed implementation (`INCORRECTLY IMPLEMENTED`) or visible code issues for `NOT MET`, quote relevant snippets from **CODE CHANGES (DIFF)** or **CONTEXT CODE** using Markdown.
 
 **IMPORTANT:** Your response MUST end with *exactly* one of the following lines, with no extra text after it:
 `Result: PASS`
@@ -64,6 +66,6 @@ OR
 `Result: FAIL`
 
 **Explanation:**
-    [Your explanation here. If FAIL, include relevant code snippets below using appropriate Markdown code fences.]
+    [Follow the OUTPUT FORMAT above to structure your explanation here.]
 
     **Result:** [PASS or FAIL]
