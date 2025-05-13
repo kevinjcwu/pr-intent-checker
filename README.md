@@ -34,6 +34,28 @@ The core goal of this action is to provide an AI model with enough information t
 
 This AST-based approach aims to strike a balance, providing crucial structural context around the specific code being modified without incurring the excessive token cost of sending entire unchanged files or unrelated code sections. *(Note: Currently, the full definition of changed functions/classes is extracted. Future refinements might explore strategies like context windowing or signature-only extraction for very large functions to further optimize token usage if needed).*
 
+## Crafting Effective GitHub Issues for Intent Checking
+
+The accuracy and effectiveness of the PR Intent Checker heavily depend on the quality of the linked GitHub Issue. A well-defined issue provides the "ground truth" against which the PR's changes are evaluated.
+
+**Key Recommendations:**
+
+*   **Detailed Description:** The issue description should clearly articulate the problem, the proposed solution, and the expected outcome. The more context the AI has, the better it can understand the intended changes.
+*   **Clear Acceptance Criteria (ACs):** This is paramount. ACs define the specific conditions that must be met for the issue to be considered resolved. They should be:
+    *   **Specific:** Avoid vague language.
+    *   **Measurable/Testable:** It should be clear how to verify if a criterion is met.
+    *   **Comprehensive:** Cover all essential aspects of the feature or fix.
+*   **Use Checkbox Format for ACs:** It is highly recommended to list acceptance criteria using GitHub's markdown checkbox format:
+    ```markdown
+    ## Acceptance Criteria
+    - [ ] Criterion 1: The system must do X.
+    - [ ] Criterion 2: Users should be able to perform Y.
+    - [ ] Criterion 3: Performance for Z should be under N ms.
+    ```
+    Using checkboxes makes it visually easy for developers to track their progress and for reviewers (including the AI bot) to verify that each distinct criterion has been addressed. The PR Intent Checker is specifically prompted to analyze each criterion, and this format aids that process significantly.
+
+A clear issue with well-defined, checkbox-formatted acceptance criteria significantly improves the AI's ability to perform a meaningful intent analysis and provide accurate feedback.
+
 ## Understanding Abstract Syntax Trees (AST)
 
 The current approach relies heavily on Abstract Syntax Trees (ASTs) to understand the structure of Python code. Here's a brief explanation:

@@ -71,10 +71,10 @@ def main():
     # Pass the PR object to the function
     issue_number = find_linked_issue_number(pr)
     if not issue_number:
-        logger.error(f"Could not find explicitly linked issue for PR #{pr_number}.")
+        logger.error(f"Could not find linked issue for PR #{pr_number} via timeline events or PR body.")
         set_action_output("result", "FAIL")
-        set_action_output("explanation", "Error: No explicitly linked issue found via timeline events for PR.")
-        # Note: We removed the regex fallback, so this is now a hard failure.
+        set_action_output("explanation", "Error: No linked issue found. Please link an issue in the PR description (e.g., 'Closes #123') or ensure it's linked via GitHub's UI.")
+        # The find_linked_issue_number function in github_api.py attempts both timeline events and PR body regex.
         sys.exit(1)
     logger.info(f"Found linked issue #{issue_number}")
 
