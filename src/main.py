@@ -13,7 +13,6 @@ from github_api import (
 from llm_eval import evaluate_intent
 from ast_analyzer import generate_context_code # Import the new function
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,6 @@ def main():
         sys.exit(1)
     logger.info(f"Processing PR #{pr_number}")
 
-    # Get the PR object using the number
     pr = get_pull_request(pr_number)
     if not pr:
         # Error logged within get_pull_request
@@ -56,7 +54,6 @@ def main():
         sys.exit(1)
 
     # --- 2. Get PR Diff ---
-    # Pass the PR object to the function
     code_diff = get_pr_diff(pr)
     if code_diff is None: # Check for None explicitly
         logger.error(f"Failed to fetch diff for PR #{pr_number}. Exiting.")
@@ -68,7 +65,6 @@ def main():
         # Let LLM decide based on prompt.
 
     # --- 3. Find and Get Linked Issue ---
-    # Pass the PR object to the function
     issue_number = find_linked_issue_number(pr)
     if not issue_number:
         logger.error(f"Could not find linked issue for PR #{pr_number} via timeline events or PR body.")
@@ -78,7 +74,6 @@ def main():
         sys.exit(1)
     logger.info(f"Found linked issue #{issue_number}")
 
-    # Get the Issue object using the number
     issue = get_issue(issue_number)
     if not issue:
         # Error logged within get_issue
@@ -86,7 +81,6 @@ def main():
         set_action_output("explanation", f"Error: Could not retrieve Issue object for #{issue_number}.")
         sys.exit(1)
 
-    # Pass the Issue object to the function
     issue_body = get_issue_body(issue)
     if issue_body is None: # Check for None explicitly (though get_issue_body now returns "" for null)
         logger.error(f"Failed to fetch body for issue #{issue_number}. Exiting.")
@@ -103,11 +97,9 @@ def main():
     if not context_code:
         logger.warning("AST context code generation resulted in empty context. Proceeding without it.")
         # Optionally, you could decide to fail here if context is critical
-        # context_code = "Context could not be generated." # Or provide a placeholder
 
     # --- 5. Evaluate Intent using LLM (with context) ---
     logger.info("Evaluating PR intent using LLM via prompty.execute...")
-    # Pass the generated context_code to the evaluation function
     result, explanation = evaluate_intent(issue_body, code_diff, context_code)
 
     if result is None:
@@ -122,7 +114,6 @@ def main():
     set_action_output("result", result)
     set_action_output("explanation", explanation)
 
-    # Post the explanation as a PR comment
     comment_header = f"🤖 **PR Intent Check Result: {result}**\n\n"
     # Pass the original pr_number here, as post_pr_comment takes the number
     comment_posted = post_pr_comment(pr_number, comment_header + (explanation or "No explanation provided."))
@@ -132,10 +123,10 @@ def main():
     # --- 7. Exit with appropriate status ---
     if result == "PASS":
         logger.info("PR Intent Check Passed.")
-        sys.exit(0) # Exit with success code
+        sys.exit(0)
     else:
         logger.error("PR Intent Check Failed.")
-        sys.exit(1) # Exit with failure code to fail the workflow step
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

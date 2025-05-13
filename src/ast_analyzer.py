@@ -7,8 +7,7 @@ from typing import Optional, Dict, List, Tuple, Set, Any
 from github import PullRequest
 from github_api import get_file_content
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class CodeAnalyzer(ast.NodeVisitor):
@@ -47,13 +46,11 @@ class CodeAnalyzer(ast.NodeVisitor):
         self._current_function_name = func_name
 
         if self._current_class_name:
-            # This is a method
             # Ensure the method list is initialized for the class
             if self._current_class_name not in self.method_calls:
                  self.method_calls[self._current_class_name] = {}
             self.method_calls[self._current_class_name][func_name] = []
         else:
-            # This is a standalone function
             self.function_defs[func_name] = node
             self.function_calls[func_name] = []
 
@@ -127,7 +124,6 @@ def parse_diff(diff: str) -> Dict[str, Set[int]]:
         elif not line.startswith('-') and not line.startswith('\\'): # Count context lines
             new_file_line_num += 1
 
-    logger.debug(f"Parsed diff. Changed Python files and added line numbers: {changed_lines}")
     return changed_lines
 
 
@@ -166,7 +162,6 @@ def _find_relevant_nodes(analyzer: CodeAnalyzer, added_lines: Set[int]) -> List[
     relevant_nodes: List[Tuple[str, ast.AST]] = []
     processed_nodes: Set[str] = set()
 
-    # Check functions
     for func_name, node in analyzer.function_defs.items():
         start, end = _get_node_line_range(node)
         if any(start <= line <= end for line in added_lines):
@@ -174,7 +169,6 @@ def _find_relevant_nodes(analyzer: CodeAnalyzer, added_lines: Set[int]) -> List[
                  relevant_nodes.append((func_name, node))
                  processed_nodes.add(func_name)
 
-    # Check classes and their methods
     for class_name, node in analyzer.class_defs.items():
         if class_name in processed_nodes: continue
         start, end = _get_node_line_range(node)
@@ -191,7 +185,6 @@ def _find_relevant_nodes(analyzer: CodeAnalyzer, added_lines: Set[int]) -> List[
             relevant_nodes.append((class_name, node))
             processed_nodes.add(class_name)
 
-    logger.debug(f"Found {len(relevant_nodes)} relevant nodes containing changes.")
     return relevant_nodes
 
 def _extract_node_context(node_name: str, node: ast.AST, analyzer: CodeAnalyzer, file_path: str) -> List[str]:
@@ -290,4 +283,3 @@ def generate_context_code(diff: str, pr: PullRequest.PullRequest) -> str:
 # Example Usage (for testing purposes)
 if __name__ == '__main__':
     print("AST Analyzer module loaded.")
-    # Add test code here if needed

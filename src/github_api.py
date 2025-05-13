@@ -2,15 +2,14 @@ import os
 import json
 import logging
 import base64
-import re # Moved import
-import requests # Moved import
+import re
+import requests
 from typing import Optional, Dict, Any, Tuple
 
 from github import Github, GithubException, PullRequest, Issue, ContentFile
 from github.GithubException import UnknownObjectException
 
-# Force DEBUG level for action logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # --- Configuration ---
@@ -35,7 +34,6 @@ except ValueError:
     logger.error(f"Invalid GITHUB_REPOSITORY format: {GITHUB_REPOSITORY}. Expected 'owner/repo'.")
     exit(1)
 
-# Initialize PyGithub client
 github_client: Github = Github(
     base_url=GITHUB_API_URL,
     login_or_token=GITHUB_TOKEN
@@ -73,7 +71,6 @@ def get_pr_number_from_event() -> Optional[int]:
              return int(event_payload['number'])
 
         logger.error("Could not reliably determine pull request number from event payload.")
-        logger.debug(f"Event Payload Keys: {event_payload.keys()}")
         return None
     except json.JSONDecodeError:
         logger.error(f"Failed to decode JSON from {GITHUB_EVENT_PATH}")
@@ -142,7 +139,6 @@ def _find_issue_via_regex(pr: PullRequest.PullRequest) -> Optional[int]:
     """Helper function to find linked issue number using regex on PR body."""
     pr_body = pr.body
     if not pr_body:
-        logger.debug(f"PR #{pr.number} body is empty. Cannot find linked issue via body text.")
         return None
 
     # Use re imported at top level
@@ -156,7 +152,6 @@ def _find_issue_via_regex(pr: PullRequest.PullRequest) -> Optional[int]:
             logger.info(f"Found potential linked issue #{issue_number} via regex fallback in PR #{pr.number} body.")
             return issue_number
 
-    logger.debug(f"Could not find linked issue number via regex fallback in PR #{pr.number} body.")
     return None
 
 def find_linked_issue_number(pr: PullRequest.PullRequest) -> Optional[int]:
@@ -170,11 +165,9 @@ def find_linked_issue_number(pr: PullRequest.PullRequest) -> Optional[int]:
 
     try:
         # --- Strategy 1: Check Timeline Events (Most Reliable) ---
-        logger.debug(f"Attempting to find linked issue via timeline events for PR #{pr.number}...")
         timeline = None
         try:
             timeline = pr.get_issue_events()
-            logger.debug(f"Successfully fetched timeline events object for PR #{pr.number}.")
         except Exception as e_fetch:
             logger.error(f"Error occurred *during* fetch of timeline events for PR #{pr.number}: {e_fetch}", exc_info=True)
             timeline = None # Ensure timeline is None if fetch failed
@@ -183,7 +176,6 @@ def find_linked_issue_number(pr: PullRequest.PullRequest) -> Optional[int]:
             event_count = 0
             for event in timeline:
                 event_count += 1
-                logger.debug(f"Timeline event type: {event.event}")
                 if event.event == 'cross-referenced' and event.source and event.source.issue:
                     source_issue = event.source.issue
                     if source_issue.number != pr.number and source_issue.repository.full_name == repo.full_name:
