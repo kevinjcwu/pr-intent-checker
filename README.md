@@ -1,6 +1,6 @@
 # PR Intent Checker GitHub Action
 
-This GitHub Action uses an AI model (via Azure OpenAI Service) to analyze the code changes in a Pull Request (PR) and compare them against the requirements specified in a linked GitHub Issue. It helps identify potential "intent drift" early in the development cycle.
+The PR Intent Checker is a GitHub Action experiment focused on automatically analyzing the underlying purpose of code changes within pull requests. It integrates Large Language Model (LLM) capabilities with Abstract Syntax Tree (AST) analysis to interpret developer intent beyond simple diffs. This tool assists in verifying if a pull request's modifications accurately reflect its stated objectives or the requirements of linked issues.
 
 ## How it Works: Evolution of Context
 
